@@ -2,7 +2,8 @@ Copyright (c) 2024 Wanjare Samuel
 
 SYSTEM INFORMATION VIEWER (VERSION 0.1.0)
 
-DESCRIPTION: Wanjplayer is a video player application that plays video files. It uses the wxWidgets library.
+DESCRIPTION: SysInfoViewer is a linux app that hekps you view system infomation 
+            hassle free in a beautiful dashboard It uses the wxWidgets library.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy 
 of this software (SysInfoViewer app) and associated documentation 
