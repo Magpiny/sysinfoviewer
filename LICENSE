@@ -1,0 +1,35 @@
+Copyright (c) 2024 Wanjare Samuel
+
+SYSTEM INFORMATION VIEWER (VERSION 0.1.0)
+
+DESCRIPTION: Wanjplayer is a video player application that plays video files. It uses the wxWidgets library.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy 
+of this software (SysInfoViewer app) and associated documentation 
+files, to deal in the Software without restriction, including without 
+limiting the rights to use, copy, modify, merge, publish, distribute, 
+sublicense and/or sell copies of the Software, subject to the following conditions:
+
+1:  The above copyright notice and this license shall be included in all copies
+    or substantial portions of the Software.
+
+2:  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+3:  IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR 
+    OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, 
+    ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER 
+    DEALINGS IN THE SOFTWARE.
+
+4:  The Copyright Holder has no obligation to provide support, updates, or 
+    modifications to the Software.
+
+5:  This license terminates automatically if you fail to comply with its terms 
+    and conditions.
+
+6:  This license constitutes the entire agreement concerning the Software between 
+    the parties.
+
+This license shall be governed by the laws of Kenya. For any questions regarding 
+this license, contact: wanjaresamuel@gmail.com
