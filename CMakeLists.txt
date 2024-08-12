@@ -10,6 +10,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(wxWidgets REQUIRED COMPONENTS core base)
 include(${wxWidgets_USE_FILE})
 
+# Find libcurl
+find_package(CURL REQUIRED)
+include_directories(${CURL_INCLUDE_DIRS})
+
+# Find ALSA
+find_package(ALSA REQUIRED)
+
 # Add source files
 set(SOURCES
     sysinfo.cpp
@@ -20,7 +27,10 @@ set(SOURCES
 add_executable(${PROJECT_NAME} ${SOURCES})
 
 # Link wxWidgets libraries
-target_link_libraries(${PROJECT_NAME} PRIVATE ${wxWidgets_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${wxWidgets_LIBRARIES} ${CURL_LIBRARIES})
+
+# Link ALSA library
+target_link_libraries(${PROJECT_NAME} PRIVATE ALSA::ALSA)
 
 # Include directories
 target_include_directories(${PROJECT_NAME} PRIVATE ${wxWidgets_INCLUDE_DIRS})

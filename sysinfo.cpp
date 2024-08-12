@@ -1,11 +1,10 @@
 /*
- *
- * @Author: Wanjare Samuel
- * @APPNAME: Sysinfo
+ *@Author: Wanjare Samuel
+ * @APPNAME: SysInfoViewer
  * PROGRAM: System Information Viewer
  * DESCRIPTION: View Information About your system with ease
  * LIBRARY: wxWidgets 3.2.5
- * FROM: 1st July 2024 Siaya, Kenya.
+ * FROM: 1st July 2024 Alego, Kenya.
  * BUILDING INFO: This app was compiled using -std=c++23 flag and g++ Version
  14,
  * Written in Zed textEditor Version 0.143
@@ -24,6 +23,8 @@
 // #include <wx/button.h>
 #include <string>
 #include <vector>
+#include <format>
+#include <wx/app.h>
 #include <wx/file.h>
 #include <wx/filename.h>
 #include <wx/icon.h>
@@ -56,9 +57,71 @@
 #include <fstream>
 #include <wx/dir.h>
 #include <wx/log.h>
+#include <wx/stc/stc.h>
 #include <wx/textfile.h>
 #include <wx/tokenzr.h>
-#include <wx/stc/stc.h>
+
+// Network Inforamtion
+#include <arpa/inet.h>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cstring>
+#include <curl/curl.h>
+#include <errno.h>
+#include <exception>
+#include <fcntl.h>
+#include <filesystem>
+#include <fstream>
+#include <ifaddrs.h>
+#include <linux/if_link.h>
+#include <linux/if_packet.h>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <net/if.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <poll.h>
+#include <random>
+#include <resolv.h>
+#include <string>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <thread>
+#include <unistd.h>
+#include <wx/graphics.h>
+#include <wx/panel.h>
+#include <wx/scrolwin.h>
+#include <wx/sizer.h>
+#include <wx/statbmp.h>
+#include <wx/stattext.h>
+#include <wx/thread.h>
+#include <wx/event.h>
+
+// storage
+#include <sys/statvfs.h>
+#include <wx/dir.h>
+#include <wx/textfile.h>
+
+// display libs
+#include <wx/display.h>
+
+// sound check
+#include <alsa/asoundlib.h>
+
+// app info
+#include <cstdio>
+#include <memory>
+#include <stdexcept>
+#include <wx/listctrl.h>
+#include <wx/wrapsizer.h>
+
+#include <fstream>
+#include <optional>
+#include <regex>
+#include <wx/font.h>
+
 
 class MyApp : public wxApp {
 public:
@@ -80,6 +143,7 @@ enum { ID_Hello = 1 };
 wxIMPLEMENT_APP(MyApp);
 
 bool MyApp::OnInit() {
+  wxLog::SetActiveTarget(new wxLogStderr());
   MyFrame *frame = new MyFrame();
   frame->SetSize(1200, 800);
 
@@ -100,7 +164,7 @@ bool MyApp::OnInit() {
   wxPanel *systeminfoPage = new wxPanel(treebook, wxID_ANY);
   wxPanel *resourcesInfoPage = new wxPanel(treebook, wxID_ANY);
   wxPanel *miscInfoPage = new wxPanel(treebook, wxID_ANY);
-  wxPanel *cpuInfoPage = new wxPanel(treebook, wxID_ANY);
+  wxPanel *appsInfoPage = new wxPanel(treebook, wxID_ANY);
 
   /*********** BEGIN PAGE 1: Sytem Information ****************************/
   // Create sizers for the two rows: top & bottom rows
@@ -121,11 +185,13 @@ bool MyApp::OnInit() {
   //.............................................//
   //.................................... CPU USAGE
   //...............................................//
-  wxStaticText* cpuUsageTitle = new wxStaticText(systeminfoPage, wxID_ANY, "CPU USAGE",
-      wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+  wxStaticText *cpuUsageTitle =
+      new wxStaticText(systeminfoPage, wxID_ANY, "CPU USAGE", wxDefaultPosition,
+                       wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
   topRowLeftChild->Add(cpuUsageTitle, 0, wxEXPAND | wxALL, 5);
 
-  // topRowLeftChild->Add(new wxStaticText(systeminfoPage, wxID_ANY, "CPU USAGE"),
+  // topRowLeftChild->Add(new wxStaticText(systeminfoPage, wxID_ANY, "CPU
+  // USAGE"),
   //                      0, wxALL | wxALIGN_CENTRE_HORIZONTAL, 5);
   class CPUDoughnutChartPanel : public wxPanel {
   public:
@@ -976,9 +1042,6 @@ bool MyApp::OnInit() {
           info.time = fields[9];
 
           // Combine all remaining fields for the command
-          // info.command = wxJoin(fields.begin() + 10, fields.end(), ' ');
-
-          // Combine all remaining fields for the command
           wxArrayString commandParts(fields.begin() + 10, fields.end());
           info.command = wxJoin(commandParts, ' ');
 
@@ -995,15 +1058,6 @@ bool MyApp::OnInit() {
           m_listCtrl->SetItem(itemIndex, 4, info.ram);
           m_listCtrl->SetItem(itemIndex, 5, info.time);
           m_listCtrl->SetItem(itemIndex, 6, info.command);
-
-          // wxButton *killButton =
-          //     new wxButton(m_listCtrl, wxID_ANY, "Kill", wxDefaultPosition,
-          //                  wxDefaultSize, wxBU_EXACTFIT);
-          // killButton->Bind(wxEVT_BUTTON, &ResourcesInfoPage::OnKillProcess,
-          //                  this, wxID_ANY, wxID_ANY,
-          //                  new wxVariant(static_cast<wxLongLong>(info.pid)));
-          // m_listCtrl->SetItemPtrData(itemIndex,
-          //                            reinterpret_cast<wxUIntPtr>(killButton));
         }
       }
 
@@ -1057,87 +1111,1357 @@ bool MyApp::OnInit() {
 
   /************ END: END OF PAGE 2 ***************************/
 
-
   /************* BEGIN: Populate page 3 values ***************/
+  // Create a responsive sizer for page 3 (Miscellaneous Info)
+  wxBoxSizer *miscPageSizer = new wxBoxSizer(wxVERTICAL);
 
-  //-------------- Create the six sizers --------------------
-  // Create main sizer
-  wxBoxSizer* p3MainSizer = new wxBoxSizer(wxVERTICAL);
+  // Create top and bottom row sizers
+  wxBoxSizer *miscTopRowSizer = new wxBoxSizer(wxHORIZONTAL);
+  wxBoxSizer *miscBottomRowSizer = new wxBoxSizer(wxHORIZONTAL);
 
-  // Create top row sizer
-  wxFlexGridSizer* p3TopRowSizer = new wxFlexGridSizer(1, 3, 5, 5);
-  p3TopRowSizer->AddGrowableCol(0, 1);
-  p3TopRowSizer->AddGrowableCol(1, 1);
-  p3TopRowSizer->AddGrowableCol(2, 1);
+  // Create panes for the top row
+  wxPanel *networkPane = new wxPanel(miscInfoPage, wxID_ANY);
+  wxPanel *displayInfoPane = new wxPanel(miscInfoPage, wxID_ANY);
+  wxPanel *storageDevicesPane = new wxPanel(miscInfoPage, wxID_ANY);
 
-  // Create bottom row sizer
-  wxFlexGridSizer* p3BottomRowSizer = new wxFlexGridSizer(1, 3, 5, 5);
-  p3BottomRowSizer->AddGrowableCol(0, 1);
-  p3BottomRowSizer->AddGrowableCol(1, 1);
-  p3BottomRowSizer->AddGrowableCol(2, 1);
+  // Create panes for the bottom row
+  wxPanel *audioDevicesPane = new wxPanel(miscInfoPage, wxID_ANY);
+  wxPanel *motherboardInfoPane = new wxPanel(miscInfoPage, wxID_ANY);
+  wxPanel *cpuInfoPane = new wxPanel(miscInfoPage, wxID_ANY);
 
-  // Create styled font for headers
-  wxFont headerFont = wxFont(wxNORMAL_FONT->GetPointSize(), wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
-      wxFONTWEIGHT_BOLD);
+  // Add panes to the top row sizer
+  miscTopRowSizer->Add(networkPane, 1, wxEXPAND | wxALL, 5);
+  miscTopRowSizer->Add(displayInfoPane, 1, wxEXPAND | wxALL, 5);
+  miscTopRowSizer->Add(storageDevicesPane, 1, wxEXPAND | wxALL, 5);
 
-  // Create and add content to top row
-  wxStaticText* topLeft = new wxStaticText(miscInfoPage, wxID_ANY, "Top Left", wxDefaultPosition,
-      wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-  wxStaticText* topCenter = new wxStaticText(miscInfoPage, wxID_ANY, "Top Center", wxDefaultPosition,
-      wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-  wxStaticText* topRight = new wxStaticText(miscInfoPage, wxID_ANY, "Top Right", wxDefaultPosition,
-      wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+  // Add panes to the bottom row sizer
+  miscBottomRowSizer->Add(audioDevicesPane, 1, wxEXPAND | wxALL, 5);
+  miscBottomRowSizer->Add(motherboardInfoPane, 1, wxEXPAND | wxALL, 5);
+  miscBottomRowSizer->Add(cpuInfoPane, 1, wxEXPAND | wxALL, 5);
 
-  topLeft->SetFont(headerFont);
-  topCenter->SetFont(headerFont);
-  topRight->SetFont(headerFont);
+  // ------------------------------ NETWORK INFORMATION
+  // ------------------------------ Set up the network pane
+  wxStaticBoxSizer *networkSizer =
+      new wxStaticBoxSizer(wxVERTICAL, networkPane, "NETWORK INFORMATION");
 
-  p3TopRowSizer->Add(topLeft, 1, wxEXPAND | wxALL, 5);
-  p3TopRowSizer->Add(topCenter, 1, wxEXPAND | wxALL, 5);
-  p3TopRowSizer->Add(topRight, 1, wxEXPAND | wxALL, 5);
+  class NetworkInfoPanel : public wxPanel {
+  public:
+    NetworkInfoPanel(wxWindow *parent) : wxPanel(parent, wxID_ANY) {
+      wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
 
-  // Create and add content to bottom row
-  wxStaticText* bottomLeft = new wxStaticText(miscInfoPage, wxID_ANY, "Bottom Left",
-      wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-  wxStaticText* bottomCenter = new wxStaticText(miscInfoPage, wxID_ANY, "Bottom Center",
-      wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
-  wxStaticText* bottomRight = new wxStaticText(miscInfoPage, wxID_ANY, "Bottom Right",
-      wxDefaultPosition, wxDefaultSize, wxALIGN_CENTER_HORIZONTAL);
+      wxBoxSizer *titleSizer = new wxBoxSizer(wxHORIZONTAL);
+      statusDot =
+          new wxPanel(this, wxID_ANY, wxDefaultPosition, wxSize(10, 10));
+      titleLabel = new wxStaticText(this, wxID_ANY, "Network Information");
+      titleSizer->Add(statusDot, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
+      titleSizer->Add(titleLabel, 0, wxALIGN_CENTER_VERTICAL);
+      mainSizer->Add(titleSizer, 0, wxALL, 10);
 
-  bottomLeft->SetFont(headerFont);
-  bottomCenter->SetFont(headerFont);
-  bottomRight->SetFont(headerFont);
+      wxFlexGridSizer *gridSizer = new wxFlexGridSizer(8, 2, 10, 10);
 
-  p3BottomRowSizer->Add(bottomLeft, 1, wxEXPAND | wxALL, 5);
-  p3BottomRowSizer->Add(bottomCenter, 1, wxEXPAND | wxALL, 5);
-  p3BottomRowSizer->Add(bottomRight, 1, wxEXPAND | wxALL, 5);
+      ipLabel = new wxStaticText(this, wxID_ANY, "IP Address:");
+      ipValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(ipLabel);
+      gridSizer->Add(ipValue);
 
-  // Add row sizers to main sizer
-  p3MainSizer->Add(topRowSizer, 1, wxEXPAND | wxALL, 10);
-  p3MainSizer->Add(bottomRowSizer, 1, wxEXPAND | wxALL, 10);
+      macLabel = new wxStaticText(this, wxID_ANY, "MAC Address:");
+      macValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(macLabel);
+      gridSizer->Add(macValue);
 
-  // Set the sizer for the panel
-  p3MainSizer->Add(miscInfoPage, 1, wxEXPAND);
-  //miscInfoPage->SetSizer(p3MainSizer);
+      interfaceLabel = new wxStaticText(this, wxID_ANY, "Interface:");
+      interfaceValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(interfaceLabel);
+      gridSizer->Add(interfaceValue);
 
-  // Set minimum size for the frame
-  //SetMinSize(wxSize(400, 300));
+      uploadLabel = new wxStaticText(this, wxID_ANY, "Upload Speed:");
+      uploadValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(uploadLabel);
+      gridSizer->Add(uploadValue);
+
+      downloadLabel = new wxStaticText(this, wxID_ANY, "Download Speed:");
+      downloadValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(downloadLabel);
+      gridSizer->Add(downloadValue);
+
+      totalUploadLabel = new wxStaticText(this, wxID_ANY, "Total Uploaded:");
+      totalUploadValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(totalUploadLabel);
+      gridSizer->Add(totalUploadValue);
+
+      totalDownloadLabel =
+          new wxStaticText(this, wxID_ANY, "Total Downloaded:");
+      totalDownloadValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(totalDownloadLabel);
+      gridSizer->Add(totalDownloadValue);
+
+      gatewayLabel = new wxStaticText(this, wxID_ANY, "Default Gateway:");
+      gatewayValue = new wxStaticText(this, wxID_ANY, "");
+      gridSizer->Add(gatewayLabel);
+      gridSizer->Add(gatewayValue);
+
+      mainSizer->Add(gridSizer, 0, wxALL, 10);
+
+      SetSizer(mainSizer);
+
+      timer = new wxTimer(this);
+
+      Bind(wxEVT_TIMER, &NetworkInfoPanel::OnTimer, this);
+      timer->Start(1000); // Update every second
+    }
+
+  private:
+    wxPanel *statusDot;
+    wxStaticText *titleLabel;
+    wxStaticText *ipLabel;
+    wxStaticText *ipValue;
+    wxStaticText *macLabel;
+    wxStaticText *macValue;
+    wxStaticText *interfaceLabel;
+    wxStaticText *interfaceValue;
+    wxStaticText *uploadLabel;
+    wxStaticText *uploadValue;
+    wxStaticText *downloadLabel;
+    wxStaticText *downloadValue;
+    wxStaticText *totalUploadLabel;
+    wxStaticText *totalUploadValue;
+    wxStaticText *totalDownloadLabel;
+    wxStaticText *totalDownloadValue;
+    wxStaticText *gatewayLabel;
+    wxStaticText *gatewayValue;
+    wxTimer *timer;
+
+    long long lastTxBytes = 0;
+    long long lastRxBytes = 0;
+    std::string currentInterface;
+
+    void OnTimer(wxTimerEvent &event) { UpdateNetworkInfo(); }
+
+    void UpdateNetworkInfo() {
+      // Get network interface information
+      std::string ipAddress, macAddress;
+      GetInterfaceInfo(currentInterface, ipAddress, macAddress);
+
+      ipValue->SetLabel(ipAddress);
+      macValue->SetLabel(macAddress);
+      interfaceValue->SetLabel(currentInterface);
+
+      // Get upload and download speeds
+      long long txBytes, rxBytes;
+      GetNetworkUsage(currentInterface, txBytes, rxBytes);
+
+      double uploadSpeed = (txBytes - lastTxBytes) / 1024.0;   // KB/s
+      double downloadSpeed = (rxBytes - lastRxBytes) / 1024.0; // KB/s
+
+      uploadValue->SetLabel(wxString::Format("%.2f KB/s", uploadSpeed));
+      downloadValue->SetLabel(wxString::Format("%.2f KB/s", downloadSpeed));
+
+      totalUploadValue->SetLabel(FormatBytes(txBytes));
+      totalDownloadValue->SetLabel(FormatBytes(rxBytes));
+
+      lastTxBytes = txBytes;
+      lastRxBytes = rxBytes;
+
+      // Get default gateway
+      std::string gateway = GetDefaultGateway();
+      gatewayValue->SetLabel(gateway);
+
+      // Update status dot
+      bool isOnline = !ipAddress.empty() && ipAddress != "0.0.0.0";
+      statusDot->SetBackgroundColour(
+          isOnline
+              ? *wxGREEN
+              : wxColour(255, 165, 0)); // Green if online, orange if offline
+      statusDot->Refresh();
+    }
+
+    void GetInterfaceInfo(std::string &interfaceName, std::string &ipAddress,
+                          std::string &macAddress) {
+      struct ifaddrs *ifaddr, *ifa;
+      int family, s;
+      char host[NI_MAXHOST];
+
+      if (getifaddrs(&ifaddr) == -1) {
+        perror("getifaddrs");
+        return;
+      }
+
+      for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+        if (ifa->ifa_addr == NULL)
+          continue;
+
+        family = ifa->ifa_addr->sa_family;
+
+        if (family == AF_INET) {
+          s = getnameinfo(ifa->ifa_addr, sizeof(struct sockaddr_in), host,
+                          NI_MAXHOST, NULL, 0, NI_NUMERICHOST);
+          if (s != 0) {
+            printf("getnameinfo() failed: %s\n", gai_strerror(s));
+            continue;
+          }
+
+          if (strcmp(ifa->ifa_name, "lo") != 0) { // Ignore loopback interface
+            interfaceName = ifa->ifa_name;
+            ipAddress = host;
+
+            // Get MAC address
+            struct ifreq ifr;
+            int fd = socket(AF_INET, SOCK_DGRAM, 0);
+            ifr.ifr_addr.sa_family = AF_INET;
+            strncpy(ifr.ifr_name, ifa->ifa_name, IFNAMSIZ - 1);
+            ioctl(fd, SIOCGIFHWADDR, &ifr);
+            close(fd);
+
+            unsigned char *mac = (unsigned char *)ifr.ifr_hwaddr.sa_data;
+            char macStr[18];
+            snprintf(macStr, sizeof(macStr), "%02x:%02x:%02x:%02x:%02x:%02x",
+                     mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            macAddress = macStr;
+
+            break; // Use the first non-loopback interface
+          }
+        }
+      }
+
+      freeifaddrs(ifaddr);
+    }
+
+    void GetNetworkUsage(const std::string &interface, long long &txBytes,
+                         long long &rxBytes) {
+      std::ifstream statFile("/proc/net/dev");
+      std::string line;
+      while (std::getline(statFile, line)) {
+        if (line.find(interface + ":") != std::string::npos) {
+          std::istringstream iss(line);
+          std::string token;
+          iss >> token;   // Skip interface name
+          iss >> rxBytes; // Received bytes
+          for (int i = 0; i < 7; ++i)
+            iss >> token; // Skip to transmitted bytes
+          iss >> txBytes;
+          break;
+        }
+      }
+    }
+
+    std::string GetDefaultGateway() {
+      std::ifstream routeFile("/proc/net/route");
+      std::string line;
+      while (std::getline(routeFile, line)) {
+        std::istringstream iss(line);
+        std::string interfaceName, destination, gateway;
+        iss >> interfaceName >> destination >> gateway;
+        if (destination == "00000000") // Default route
+        {
+          unsigned int gatewayAddr;
+          sscanf(gateway.c_str(), "%X", &gatewayAddr);
+          struct in_addr addr;
+          addr.s_addr = gatewayAddr;
+          return inet_ntoa(addr);
+        }
+      }
+      return "Not found";
+    }
+
+    std::string FormatBytes(long long bytes) {
+      const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+      int i = 0;
+      double size = bytes;
+      while (size > 1024 && i < 4) {
+        size /= 1024;
+        i++;
+      }
+      char buffer[32];
+      snprintf(buffer, sizeof(buffer), "%.2f %s", size, units[i]);
+      return std::string(buffer);
+    }
+  };
+
+  // Add NETWORK INFORMATION to the top left of the page 3
+  NetworkInfoPanel *networkInfo = new NetworkInfoPanel(networkPane);
+  networkSizer->Add(networkInfo, 1, wxEXPAND | wxALL, 5);
+  networkPane->SetSizer(networkSizer);
+  networkPane->Layout();
+
+
+// ----------------- DISPLAy INFORMATION -------------
+wxStaticBoxSizer *displaySizer = new wxStaticBoxSizer(
+    wxVERTICAL, displayInfoPane, "DISPLAY INFORMATION");
+
+class DisplayInfoPanel : public wxPanel {
+public:
+    DisplayInfoPanel(wxWindow *parent) : wxPanel(parent, wxID_ANY) {
+        m_sizer = std::make_unique<wxBoxSizer>(wxVERTICAL);
+        SetSizer(m_sizer.get());
+
+        CollectDisplayInfo();
+        CreateControls();
+
+        Bind(wxEVT_SIZE, &DisplayInfoPanel::OnSize, this);
+    }
+
+private:
+    std::unique_ptr<wxBoxSizer> m_sizer;
+    std::vector<wxStaticText*> m_labels;
+    std::vector<std::pair<std::string, std::string>> m_displayInfo;
+
+    void CollectDisplayInfo() {
+        try {
+            CollectFromWxDisplay();
+            CollectDisplayManager();
+            CollectFromEdid();
+            CollectGpuInfo();
+        } catch (const std::exception& e) {
+            wxLogError("Failed to collect display info: %s", e.what());
+        }
+    }
+
+    void CollectFromWxDisplay() {
+        int displayCount = wxDisplay::GetCount();
+        if (displayCount > 0) {
+            //wxDisplay display(0);  // Primary display
+            wxDisplay display(static_cast<unsigned int>(0));  // Primary display
+
+            wxVideoMode mode = display.GetCurrentMode();
+
+            m_displayInfo.emplace_back("Screen Resolution", 
+                std::format("{}x{}", mode.GetWidth(), mode.GetHeight()));
+            m_displayInfo.emplace_back("Refresh Rate", 
+                std::format("{} Hz", 60));  // mode.refresh =! 60
+            m_displayInfo.emplace_back("Color Depth", 
+                std::format("{} bits", mode.GetDepth()));
+        } else {
+            wxLogError("No displays found");
+        }
+    }
+
+    void CollectDisplayManager() {
+        wxString displayManager = "Unknown";
+        wxArrayString output;
+        if (wxExecute("ps -e | grep -E 'gdm|sddm|lightdm|lxdm|xdm'", output, wxEXEC_NODISABLE) == 0) {
+            if (!output.IsEmpty()) {
+                wxString line = output[0];
+                if (line.Contains("gdm")) displayManager = "GDM";
+                else if (line.Contains("sddm")) displayManager = "SDDM";
+                else if (line.Contains("lightdm")) displayManager = "LightDM";
+                else if (line.Contains("lxdm")) displayManager = "LXDM";
+                else if (line.Contains("xdm")) displayManager = "XDM";
+            }
+        }
+        //displayManager.ToStdString()
+        m_displayInfo.emplace_back("Display Manager", "GDM");
+    }
+
+    void CollectFromEdid() {
+        try {
+            const std::filesystem::path edidPath("/sys/class/drm");
+            for (const auto& entry : std::filesystem::directory_iterator(edidPath)) {
+                std::string filename = entry.path().string() + "/edid";
+                if (std::filesystem::exists(filename)) {
+                    std::ifstream file(filename, std::ios::binary);
+                    if (file) {
+                        std::vector<unsigned char> buffer(128);
+                        if (file.read(reinterpret_cast<char*>(buffer.data()), 128)) {
+                            std::string manufacturer;
+                            manufacturer += static_cast<char>(((buffer[8] & 0x7C) >> 2) + 'A' - 1);
+                            manufacturer += static_cast<char>(((buffer[8] & 0x03) << 3 | (buffer[9] & 0xE0) >> 5) + 'A' - 1);
+                            manufacturer += static_cast<char>((buffer[9] & 0x1F) + 'A' - 1);
+                            
+                            std::string model;
+                            for (int i = 54; i <= 71; ++i) {
+                                if (buffer[i] == 0x0A) break;
+                                if (buffer[i] >= 32 && buffer[i] <= 126) {
+                                    model += static_cast<char>(buffer[i]);
+                                }
+                            }
+                            
+                            m_displayInfo.emplace_back("Monitor Manufacturer", manufacturer);
+                            m_displayInfo.emplace_back("Monitor Model", model);
+                            return;
+                        }
+                    }
+                }
+            }
+        } catch (const std::filesystem::filesystem_error& e) {
+            wxLogError("Permission denied accessing EDID: %s", e.what());
+        }
+    }
+
+    void CollectGpuInfo() {
+        wxArrayString output;
+        if (wxExecute("lspci | grep -i vga", output, wxEXEC_NODISABLE) == 0 && !output.IsEmpty()) {
+            m_displayInfo.emplace_back("GPU Model", output[0].AfterFirst(':').Trim().ToStdString());
+        }
+
+        std::ifstream file("/sys/class/drm/card0/device/driver/module/drivers/pci:*/module/version");
+        if (file) {
+            std::string version;
+            if (std::getline(file, version)) {
+                m_displayInfo.emplace_back("GPU Driver Version", version);
+            }
+        }
+    }
+
+    void CreateControls() {
+        for (const auto& info : m_displayInfo) {
+            auto* label = new wxStaticText(this, wxID_ANY, 
+                wxString::Format("%s: %s", info.first, info.second));
+            m_labels.push_back(label);
+            m_sizer->Add(label, 0, wxEXPAND | wxALL, 5);
+        }
+    }
+
+    void OnSize(wxSizeEvent& event) {
+        int panelWidth = GetSize().GetWidth();
+        int fontSize = std::max(8, std::min(16, panelWidth / 50));
+
+        wxFont font = GetFont();
+        font.SetPointSize(fontSize);
+
+        for (auto* label : m_labels) {
+            label->SetFont(font);
+        }
+
+        event.Skip();
+    }
+};
+
+
+// Add NETWORK INFORMATION to the top left of the page 3
+  DisplayInfoPanel *displayInfo = new DisplayInfoPanel(displayInfoPane);
+  displaySizer->Add(displayInfo, 1, wxEXPAND | wxALL, 10);
+  displayInfoPane->SetSizer(displaySizer);
+  displayInfoPane->Layout();
+// ------------------ DISPLAY END =====================
+
+
+
+// ---------------------------- STORAGE DEVICES
+// ---------------------------------------------
+wxStaticBoxSizer *storageSizer = new wxStaticBoxSizer(
+    wxVERTICAL, storageDevicesPane, "STORAGE INFORMATION");
+
+class CustomGauge : public wxPanel {
+public:
+  CustomGauge(wxWindow *parent, wxWindowID id = wxID_ANY, int range = 100,
+              wxPoint pos = wxDefaultPosition, wxSize size = wxDefaultSize)
+      : wxPanel(parent, id, pos, size), m_range(range), m_value(0) {
+    Bind(wxEVT_PAINT, &CustomGauge::OnPaint, this);
+  }
+
+  void SetValue(int value) {
+    m_value = value;
+    Refresh();
+  }
+
+private:
+  void OnPaint(wxPaintEvent &event) {
+    wxPaintDC dc(this);
+    wxSize size = GetSize();
+
+    // Draw background (free space) in green
+    dc.SetBrush(wxBrush(wxColor(0, 255, 0)));
+    dc.DrawRectangle(0, 0, size.GetWidth(), size.GetHeight());
+
+    // Draw foreground (used space) in brown
+    int usedWidth = static_cast<int>(
+        (static_cast<double>(m_value) / m_range) * size.GetWidth());
+    dc.SetBrush(wxBrush(wxColor(165, 42, 42)));
+    dc.DrawRectangle(0, 0, usedWidth, size.GetHeight());
+  }
+
+  int m_range;
+  int m_value;
+};
+
+class StorageDevicesPanel : public wxPanel {
+public:
+  StorageDevicesPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
+      : wxPanel(parent, id) {
+    wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
+
+    wxLogMessage("StorageDevicesPanel constructor called");
+
+    std::vector<StorageInfo> storageInfos = getStorageDevices();
+
+    wxLogMessage(
+        wxString::Format("Found %zu storage devices", storageInfos.size()));
+
+    if (storageInfos.empty()) {
+      wxStaticText *errorText =
+          new wxStaticText(this, wxID_ANY,
+                           "No storage devices found or unable to retrieve "
+                           "storage information.");
+      mainSizer->Add(errorText, 0, wxALL, 5);
+    } else {
+      for (const auto &info : storageInfos) {
+        wxBoxSizer *deviceSizer = new wxBoxSizer(wxVERTICAL);
+
+        wxStaticText *nameText = new wxStaticText(this, wxID_ANY, info.name);
+        deviceSizer->Add(nameText, 0, wxEXPAND | wxBOTTOM, 5);
+
+        CustomGauge *gauge = new CustomGauge(
+            this, wxID_ANY, 100, wxDefaultPosition, wxSize(-1, 20));
+        int usedPercentage =
+            static_cast<int>(std::round(info.usedPercentage));
+        gauge->SetValue(usedPercentage);
+        deviceSizer->Add(gauge, 0, wxEXPAND | wxBOTTOM, 5);
+
+        wxString storageText = wxString::Format(
+            "Total: %.2f GB   Used: %.2f GB   Free: %.2f GB   (%.1f%% used)",
+            info.totalGB, info.usedGB, info.freeGB, info.usedPercentage);
+        wxStaticText *spaceText =
+            new wxStaticText(this, wxID_ANY, storageText);
+        deviceSizer->Add(spaceText, 0, wxEXPAND | wxBOTTOM, 10);
+
+        mainSizer->Add(deviceSizer, 0, wxEXPAND | wxALL, 5);
+
+        wxLogMessage(
+            wxString::Format("Added device: %s, Total: %.2f GB, Used: %.2f "
+                             "GB, Free: %.2f GB, Used%%: %.1f%%",
+                             info.name, info.totalGB, info.usedGB,
+                             info.freeGB, info.usedPercentage));
+      }
+    }
+
+    SetSizer(mainSizer);
+    mainSizer->Fit(this);
+
+    wxLogMessage(wxString::Format("Panel size: %d x %d", GetSize().GetWidth(),
+                                  GetSize().GetHeight()));
+  }
+
+private:
+  struct StorageInfo {
+    wxString name;
+    double totalGB;
+    double usedGB;
+    double freeGB;
+    double usedPercentage;
+  };
+
+  std::vector<StorageInfo> getStorageDevices() {
+    std::vector<StorageInfo> devices;
+
+    wxLogMessage("Current working directory: " + wxGetCwd());
+
+    std::ifstream mounts("/proc/mounts");
+    if (!mounts.is_open()) {
+      wxLogMessage("Failed to open /proc/mounts directly. Error: " +
+                   wxString(strerror(errno)));
+      return getFallbackStorageInfo();
+    }
+
+    std::string line;
+    while (std::getline(mounts, line)) {
+      std::istringstream iss(line);
+      std::string device, mountPoint;
+      if (iss >> device >> mountPoint) {
+        if (device.substr(0, 5) == "/dev/" &&
+            mountPoint.substr(0, 4) != "/sys" &&
+            mountPoint.substr(0, 5) != "/proc" &&
+            mountPoint.substr(0, 4) != "/run") {
+
+          struct statvfs stat;
+          if (statvfs(mountPoint.c_str(), &stat) == 0) {
+            double totalBytes =
+                static_cast<double>(stat.f_frsize) * stat.f_blocks;
+            double freeBytes =
+                static_cast<double>(stat.f_frsize) * stat.f_bfree;
+            double usedBytes = totalBytes - freeBytes;
+
+            StorageInfo info;
+            info.name = wxString::Format("%s (%s)", device, mountPoint);
+            info.totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);
+            info.usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0);
+            info.freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
+            info.usedPercentage = (usedBytes / totalBytes) * 100.0;
+
+            devices.push_back(info);
+
+            wxLogMessage(wxString::Format("Found device: %s, Total: %.2f GB, "
+                                          "Used: %.2f GB, Free: %.2f GB",
+                                          info.name, info.totalGB,
+                                          info.usedGB, info.freeGB));
+          } else {
+            wxLogMessage(wxString::Format("statvfs failed for %s. Error: %s",
+                                          mountPoint, strerror(errno)));
+          }
+        }
+      }
+    }
+
+    if (devices.empty()) {
+      wxLogMessage(
+          "No devices found in /proc/mounts, using fallback method.");
+      return getFallbackStorageInfo();
+    }
+
+    return devices;
+  }
+
+  std::vector<StorageInfo> getFallbackStorageInfo() {
+    std::vector<StorageInfo> devices;
+
+    std::vector<std::string> commonMountPoints = {"/", "/home"};
+
+    for (const auto &mountPoint : commonMountPoints) {
+      struct statvfs stat;
+      if (statvfs(mountPoint.c_str(), &stat) == 0) {
+        double totalBytes =
+            static_cast<double>(stat.f_frsize) * stat.f_blocks;
+        double freeBytes = static_cast<double>(stat.f_frsize) * stat.f_bfree;
+        double usedBytes = totalBytes - freeBytes;
+
+        StorageInfo info;
+        info.name = wxString::Format("Fallback (%s)", mountPoint);
+        info.totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);
+        info.usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0);
+        info.freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
+        info.usedPercentage = (usedBytes / totalBytes) * 100.0;
+
+        devices.push_back(info);
+
+        wxLogMessage(wxString::Format("Fallback: Found device: %s, Total: "
+                                      "%.2f GB, Used: %.2f GB, Free: %.2f GB",
+                                      info.name, info.totalGB, info.usedGB,
+                                      info.freeGB));
+      } else {
+        wxLogMessage(
+            wxString::Format("Fallback: statvfs failed for %s. Error: %s",
+                             mountPoint, strerror(errno)));
+      }
+    }
+
+    return devices;
+  }
+};
+
+StorageDevicesPanel *storageDevices =
+    new StorageDevicesPanel(storageDevicesPane);
+storageSizer->Add(storageDevices, 1, wxEXPAND | wxALL, 5);
+storageDevicesPane->SetSizer(storageSizer);
+storageDevicesPane->Layout();
+
+//----------------------------- AUDIO DEVICES INFORMATION
+//----------------------------------
+wxStaticBoxSizer *audioSizer =
+    new wxStaticBoxSizer(wxVERTICAL, audioDevicesPane, "AUDIO INFORMATION");
+
+class AudioDevicesPanel : public wxPanel {
+public:
+  AudioDevicesPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
+      : wxPanel(parent, id) {
+    wxBoxSizer *outerSizer = new wxBoxSizer(wxVERTICAL);
+
+    // Create a scrolled window to contain the existing content
+    wxScrolledWindow *scrolledWindow = new wxScrolledWindow(
+        this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+    scrolledWindow->SetScrollRate(0, 5);
+
+    wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
+
+    wxLogMessage("AudioDevicesPanel constructor called");
+
+    std::vector<AudioDeviceInfo> audioDevices = getAudioDevices();
+
+    wxLogMessage(
+        wxString::Format("Found %zu audio devices", audioDevices.size()));
+
+    if (audioDevices.empty()) {
+      wxStaticText *errorText = new wxStaticText(
+          scrolledWindow, wxID_ANY,
+          "No audio devices found or unable to retrieve audio information.");
+      mainSizer->Add(errorText, 0, wxALL, 5);
+    } else {
+      for (const auto &device : audioDevices) {
+        wxStaticBoxSizer *deviceSizer =
+            new wxStaticBoxSizer(wxVERTICAL, scrolledWindow, device.name);
+
+        wxString typeStr = device.isPlayback ? "Playback" : "Capture";
+        deviceSizer->Add(
+            new wxStaticText(scrolledWindow, wxID_ANY, "Type: " + typeStr), 0,
+            wxALL, 2);
+        deviceSizer->Add(
+            new wxStaticText(scrolledWindow, wxID_ANY,
+                             "Description: " + device.description),
+            0, wxALL, 2);
+
+        wxString formatStr = wxString::Format(
+            "Format: %s, %d channels, %d Hz", device.sampleFormat.c_str(),
+            device.channels, device.sampleRate);
+        deviceSizer->Add(
+            new wxStaticText(scrolledWindow, wxID_ANY, formatStr), 0, wxALL,
+            2);
+
+        mainSizer->Add(deviceSizer, 0, wxEXPAND | wxALL, 5);
+
+        wxLogMessage(wxString::Format(
+            "Added device: %s, Type: %s, Channels: %d, Sample Rate: %d Hz",
+            device.name, typeStr, device.channels, device.sampleRate));
+      }
+    }
+
+    scrolledWindow->SetSizer(mainSizer);
+    scrolledWindow->FitInside(); // Ensure the scrolled window content fits
+
+    outerSizer->Add(scrolledWindow, 1, wxEXPAND);
+    SetSizer(outerSizer);
+
+    wxLogMessage(wxString::Format("Panel size: %d x %d", GetSize().GetWidth(),
+                                  GetSize().GetHeight()));
+  }
+
+private:
+  struct AudioDeviceInfo {
+    wxString name;
+    wxString description;
+    bool isPlayback;
+    int channels;
+    int sampleRate;
+    wxString sampleFormat;
+  };
+
+  std::vector<AudioDeviceInfo> getAudioDevices() {
+    std::vector<AudioDeviceInfo> devices;
+
+    int cardNum = -1;
+    while (snd_card_next(&cardNum) >= 0 && cardNum >= 0) {
+      char *cardName;
+      if (snd_card_get_name(cardNum, &cardName) < 0) {
+        continue;
+      }
+
+      snd_ctl_t *cardHandle;
+      char cardId[32];
+      snprintf(cardId, sizeof(cardId), "hw:%d", cardNum);
+      if (snd_ctl_open(&cardHandle, cardId, 0) < 0) {
+        continue;
+      }
+
+      int deviceNum = -1;
+      while (snd_ctl_pcm_next_device(cardHandle, &deviceNum) >= 0 &&
+             deviceNum >= 0) {
+        for (int isPlayback = 0; isPlayback <= 1; ++isPlayback) {
+          snd_pcm_info_t *pcmInfo;
+          snd_pcm_info_alloca(&pcmInfo);
+          snd_pcm_info_set_device(pcmInfo, deviceNum);
+          snd_pcm_info_set_subdevice(pcmInfo, 0);
+          snd_pcm_info_set_stream(pcmInfo, isPlayback
+                                             ? SND_PCM_STREAM_PLAYBACK
+                                             : SND_PCM_STREAM_CAPTURE);
+
+          if (snd_ctl_pcm_info(cardHandle, pcmInfo) < 0) {
+            continue;
+          }
+
+          AudioDeviceInfo info;
+          info.name = wxString::Format("%s (Card %d, Device %d)", cardName,
+                                       cardNum, deviceNum);
+          info.description = wxString(snd_pcm_info_get_name(pcmInfo));
+          info.isPlayback = isPlayback;
+
+          // Get device capabilities
+          snd_pcm_t *pcmHandle;
+          snd_pcm_hw_params_t *hwParams;
+          char deviceIdStr[64];
+          snprintf(deviceIdStr, sizeof(deviceIdStr), "hw:%d,%d", cardNum,
+                   deviceNum);
+
+          if (snd_pcm_open(&pcmHandle, deviceIdStr,
+                           isPlayback ? SND_PCM_STREAM_PLAYBACK
+                                       : SND_PCM_STREAM_CAPTURE,
+                           SND_PCM_NONBLOCK) >= 0) {
+            snd_pcm_hw_params_alloca(&hwParams);
+            snd_pcm_hw_params_any(pcmHandle, hwParams);
+
+            unsigned int maxChannels;
+            snd_pcm_hw_params_get_channels_max(hwParams, &maxChannels);
+            info.channels = maxChannels;
+
+            unsigned int rate = 44100; // Default to 44.1kHz
+            int dir = 0;
+            snd_pcm_hw_params_get_rate(hwParams, &rate, &dir);
+            info.sampleRate = rate;
+
+            snd_pcm_format_mask_t *formatMask;
+            snd_pcm_format_mask_alloca(&formatMask);
+            snd_pcm_hw_params_get_format_mask(hwParams, formatMask);
+
+            if (snd_pcm_format_mask_test(formatMask, SND_PCM_FORMAT_FLOAT)) {
+              info.sampleFormat = "Float";
+            } else if (snd_pcm_format_mask_test(formatMask,
+                                                SND_PCM_FORMAT_S32)) {
+              info.sampleFormat = "32-bit";
+            } else if (snd_pcm_format_mask_test(formatMask,
+                                                SND_PCM_FORMAT_S24)) {
+              info.sampleFormat = "24-bit";
+            } else if (snd_pcm_format_mask_test(formatMask,
+                                                SND_PCM_FORMAT_S16)) {
+              info.sampleFormat = "16-bit";
+            } else {
+              info.sampleFormat = "Unknown";
+            }
+
+            snd_pcm_close(pcmHandle);
+          }
+
+          devices.push_back(info);
+          wxLogMessage(wxString::Format("Found audio device: %s", info.name));
+        }
+      }
+      snd_ctl_close(cardHandle);
+    }
+
+    return devices;
+  }
+};
+
+AudioDevicesPanel *audioDevices = new AudioDevicesPanel(audioDevicesPane);
+audioSizer->Add(audioDevices, 1, wxEXPAND | wxALL, 5);
+audioDevicesPane->SetSizer(audioSizer);
+audioDevicesPane->Layout();
+
+//----------------------- MOTHERBOARD INFORMATION
+//---------------------------------
+wxStaticBoxSizer *motherBoardSizer = new wxStaticBoxSizer(
+    wxVERTICAL, motherboardInfoPane, "MOTHERBOARD INFORMATION");
+
+class MotherboardInfoPanel : public wxScrolledWindow {
+public:
+  MotherboardInfoPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
+      : wxScrolledWindow(parent, id, wxDefaultPosition, wxDefaultSize,
+                         wxVSCROLL) {
+    // Remove the background color setting
+
+    m_mainSizer = new wxBoxSizer(wxVERTICAL);
+    SetSizer(m_mainSizer);
+
+    PopulateMotherboardInfo();
+
+    SetScrollRate(0, 10);
+    Bind(wxEVT_SIZE, &MotherboardInfoPanel::OnSize, this);
+  }
+
+private:
+  wxBoxSizer *m_mainSizer;
+  std::vector<wxStaticText *> m_labels;
+
+  void PopulateMotherboardInfo() {
+    std::vector<std::pair<wxString, wxString>> info = GetMotherboardInfo();
+
+    for (const auto &[key, value] : info) {
+      wxBoxSizer *rowSizer = new wxBoxSizer(wxVERTICAL);
+
+      wxStaticText *keyLabel = new wxStaticText(this, wxID_ANY, key + ":");
+      keyLabel->SetFont(keyLabel->GetFont().Bold());
+      rowSizer->Add(keyLabel, 0, wxEXPAND | wxALL, 5);
+
+      wxStaticText *valueLabel =
+          new wxStaticText(this, wxID_ANY, value, wxDefaultPosition,
+                           wxDefaultSize, wxST_NO_AUTORESIZE);
+      valueLabel->Wrap(-1); // Enable text wrapping
+      rowSizer->Add(valueLabel, 0, wxEXPAND | wxALL, 5);
+
+      m_mainSizer->Add(rowSizer, 0, wxEXPAND | wxALL, 5);
+      m_labels.push_back(keyLabel);
+      m_labels.push_back(valueLabel);
+    }
+  }
+
+  std::vector<std::pair<wxString, wxString>> GetMotherboardInfo() {
+    std::vector<std::pair<wxString, wxString>> info;
+
+    // Read information from /sys/devices/virtual/dmi/id/
+    const std::filesystem::path dmiPath("/sys/devices/virtual/dmi/id/");
+    if (std::filesystem::exists(dmiPath)) {
+      AddInfoFromFile(info, dmiPath / "board_vendor", "Manufacturer");
+      AddInfoFromFile(info, dmiPath / "board_name", "Model");
+      AddInfoFromFile(info, dmiPath / "board_version", "Version");
+      AddInfoFromFile(info, dmiPath / "bios_version", "BIOS Version");
+      AddInfoFromFile(info, dmiPath / "bios_date", "BIOS Date");
+    }
+
+    // // Add CPU information
+    // AddInfoFromCommand(info, "lscpu | grep 'Model name'", "CPU");
+
+    // // Add RAM information
+    // AddInfoFromCommand(info, "free -h | awk '/^Mem:/ {print $2}'",
+    //                    "Total RAM");
+
+    return info;
+  }
+
+  void AddInfoFromFile(std::vector<std::pair<wxString, wxString>> &info,
+                       const std::filesystem::path &path,
+                       const wxString &key) {
+    if (std::filesystem::exists(path)) {
+      std::ifstream file(path);
+      std::string value;
+      std::getline(file, value);
+      info.emplace_back(key, wxString(value));
+    }
+  }
+
+  void AddInfoFromCommand(std::vector<std::pair<wxString, wxString>> &info,
+                          const std::string &command, const wxString &key) {
+    FILE *pipe = popen(command.c_str(), "r");
+    if (pipe) {
+      char buffer[128];
+      std::string result;
+      while (!feof(pipe)) {
+        if (fgets(buffer, 128, pipe) != nullptr)
+          result += buffer;
+      }
+      pclose(pipe);
+      result.erase(0, result.find_first_not_of(" \n\r\t"));
+      result.erase(result.find_last_not_of(" \n\r\t") + 1);
+      info.emplace_back(key, wxString(result));
+    }
+  }
+
+  void OnSize(wxSizeEvent &event) {
+    Layout();
+    for (auto *label : m_labels) {
+      label->Wrap(GetSize().GetWidth() -
+                  20); // Adjust wrap width based on panel size
+    }
+    FitInside();
+    event.Skip();
+  }
+};
+
+MotherboardInfoPanel *motherboardInfo =
+    new MotherboardInfoPanel(motherboardInfoPane);
+motherBoardSizer->Add(motherboardInfo, 1, wxEXPAND | wxALL, 5);
+motherboardInfoPane->SetSizer(motherBoardSizer);
+motherboardInfoPane->Layout();
+
+//----------------------- CPUI NFORMATION ---------------------------------
+wxStaticBoxSizer *cpuInfoSizer =
+    new wxStaticBoxSizer(wxVERTICAL, cpuInfoPane, "CPU INFORMATION");
+
+class CustomCPUCoreGauge : public wxPanel {
+public:
+  CustomCPUCoreGauge(wxWindow *parent, wxWindowID id = wxID_ANY,
+                     int range = 100, const wxPoint &pos = wxDefaultPosition,
+                     const wxSize &size = wxDefaultSize)
+      : wxPanel(parent, id, pos, size), m_range(range), m_value(0) {
+    Bind(wxEVT_PAINT, &CustomCPUCoreGauge::OnPaint, this);
+  }
+
+  void SetValue(int value) {
+    m_value = value;
+    Refresh();
+  }
+
+private:
+  int m_range;
+  int m_value;
+
+  void OnPaint(wxPaintEvent &event) {
+    wxPaintDC dc(this);
+    wxSize size = GetClientSize();
+    int width = size.GetWidth();
+    int height = size.GetHeight();
+
+    // Draw background (smoke-white)
+    dc.SetBrush(wxBrush(wxColour(245, 245, 245)));
+    dc.DrawRectangle(0, 0, width, height);
+
+    // Draw foreground (blue)
+    int fillWidth =
+        static_cast<int>((static_cast<double>(m_value) / m_range) * width);
+    dc.SetBrush(wxBrush(wxColour(0, 120, 215)));
+    dc.DrawRectangle(0, 0, fillWidth, height);
+  }
+};
+
+class CPUDetailsPanel : public wxScrolledWindow {
+  public:
+    CPUDetailsPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
+        : wxScrolledWindow(parent, id) {
+      m_mainSizer = new wxBoxSizer(wxVERTICAL);
+      SetSizer(m_mainSizer);
+
+      PopulateCPUInfo();
+      CreateCoreGauges();
+
+      m_timer.Bind(wxEVT_TIMER, &CPUDetailsPanel::OnTimer, this);
+      m_timer.Start(1000); // Update every second
+
+      SetScrollRate(0, 10); // Enable vertical scrolling
+      Bind(wxEVT_SIZE, &CPUDetailsPanel::OnSize, this);
+    }
+
+  private:
+    wxBoxSizer *m_mainSizer;
+    std::vector<CustomCPUCoreGauge *> m_coreGauges;
+    std::vector<wxStaticText *> m_coreLabels;
+    wxTimer m_timer;
+    int m_numCores;
+
+    void PopulateCPUInfo() {
+      std::vector<std::pair<wxString, wxString>> info = GetCPUInfo();
+      for (const auto &[key, value] : info) {
+        wxBoxSizer *rowSizer = new wxBoxSizer(wxHORIZONTAL);
+        wxStaticText *keyLabel = new wxStaticText(this, wxID_ANY, key + ":");
+        keyLabel->SetFont(keyLabel->GetFont().Bold());
+        wxStaticText *valueLabel = new wxStaticText(this, wxID_ANY, value);
+
+        rowSizer->Add(keyLabel, 0, wxALL, 5);
+        rowSizer->Add(valueLabel, 1, wxALL, 5);
+
+        m_mainSizer->Add(rowSizer, 0, wxEXPAND | wxALL, 5);
+      }
+    }
+
+    std::vector<std::pair<wxString, wxString>> GetCPUInfo() {
+      std::vector<std::pair<wxString, wxString>> info;
+      std::ifstream cpuinfo("/proc/cpuinfo");
+      std::string line;
+      std::string model_name, vendor_id, cpu_family;
+      m_numCores = 0;
+
+      while (std::getline(cpuinfo, line)) {
+        std::istringstream iss(line);
+        std::string key, value;
+        if (std::getline(iss, key, ':') && std::getline(iss, value)) {
+          key = Trim(key);
+          value = Trim(value);
+          if (key == "model name" && model_name.empty())
+            model_name = value;
+          if (key == "vendor_id" && vendor_id.empty())
+            vendor_id = value;
+          if (key == "cpu family" && cpu_family.empty())
+            cpu_family = value;
+          if (key == "processor")
+            m_numCores++;
+        }
+      }
+
+      info.emplace_back("Manufacturer", vendor_id);
+      info.emplace_back("Model", model_name);
+      info.emplace_back("Architecture", cpu_family + "-bit");
+      info.emplace_back("Number of Cores", std::to_string(m_numCores));
+
+      return info;
+    }
+
+    void CreateCoreGauges() {
+      wxBoxSizer *coresSizer = new wxBoxSizer(wxVERTICAL);
+      for (int i = 0; i < m_numCores; ++i) {
+        wxBoxSizer *coreSizer = new wxBoxSizer(wxHORIZONTAL);
+        wxStaticText *coreLabel = new wxStaticText(
+            this, wxID_ANY, wxString::Format("Core %d: 0%%", i));
+        CustomCPUCoreGauge *coreGauge = new CustomCPUCoreGauge(
+            this, wxID_ANY, 100, wxDefaultPosition, wxSize(-1, 20));
+
+        coreSizer->Add(coreLabel, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
+        coreSizer->Add(coreGauge, 1, wxEXPAND);
+
+        coresSizer->Add(coreSizer, 0, wxEXPAND | wxALL, 5);
+
+        m_coreGauges.push_back(coreGauge);
+        m_coreLabels.push_back(coreLabel);
+      }
+      m_mainSizer->Add(coresSizer, 1, wxEXPAND | wxALL, 5);
+    }
+
+    void OnTimer(wxTimerEvent &event) {
+      std::vector<double> cpuUsage = GetCPUUsage();
+      for (size_t i = 0; i < cpuUsage.size() && i < m_coreGauges.size(); ++i) {
+        int usage = static_cast<int>(cpuUsage[i] * 100);
+        m_coreGauges[i]->SetValue(usage);
+        m_coreLabels[i]->SetLabel(wxString::Format("Core %zu: %d%%", i, usage));
+      }
+    }
+
+    std::vector<double> GetCPUUsage() {
+      static std::vector<unsigned long long> prevIdle, prevTotal;
+      std::vector<double> usage;
+      std::ifstream statFile("/proc/stat");
+      std::string line;
+
+      while (std::getline(statFile, line)) {
+        if (line.compare(0, 3, "cpu") == 0 && line[3] != ' ') {
+          std::istringstream iss(line);
+          std::string cpu;
+          unsigned long long user, nice, system, idle, iowait, irq, softirq,
+              steal, guest, guest_nice;
+          iss >> cpu >> user >> nice >> system >> idle >> iowait >> irq >>
+              softirq >> steal >> guest >> guest_nice;
+
+          unsigned long long total =
+              user + nice + system + idle + iowait + irq + softirq + steal;
+          unsigned long long idleAllTime = idle + iowait;
+
+          if (prevIdle.size() <= usage.size()) {
+            prevIdle.push_back(0);
+            prevTotal.push_back(0);
+          }
+
+          double cpuUsage =
+              (1.0 - static_cast<double>(idleAllTime - prevIdle[usage.size()]) /
+                         (total - prevTotal[usage.size()]));
+
+          usage.push_back(cpuUsage);
+          prevIdle[usage.size() - 1] = idleAllTime;
+          prevTotal[usage.size() - 1] = total;
+        }
+      }
+
+      return usage;
+    }
+
+    void OnSize(wxSizeEvent &event) {
+      Layout();
+      FitInside(); // Ensure scroll area is updated
+      event.Skip();
+    }
+
+    static std::string Trim(const std::string &str) {
+      size_t first = str.find_first_not_of(" \t");
+      if (first == std::string::npos)
+        return "";
+      size_t last = str.find_last_not_of(" \t");
+      return str.substr(first, (last - first + 1));
+    }
+  };
+
+  CPUDetailsPanel *cpuDetails = new CPUDetailsPanel(cpuInfoPane);
+  cpuInfoSizer->Add(cpuDetails, 1, wxEXPAND | wxALL, 5);
+  cpuInfoPane->SetSizer(cpuInfoSizer);
+  cpuInfoPane->Layout();
+
+  // Add the row sizers to the main sizer
+  miscPageSizer->Add(miscTopRowSizer, 1, wxEXPAND);
+  miscPageSizer->Add(miscBottomRowSizer, 1, wxEXPAND);
+
+  // Set the sizer for the miscInfoPage
+  miscInfoPage->SetSizer(miscPageSizer);
 
   /************ END: END OF PAGE 3 ***************************/
 
   /************* BEGIN: Populate page 4 values ***************/
+  wxStaticBoxSizer *appInfoSizer = new wxStaticBoxSizer(
+      wxVERTICAL, appsInfoPage, "INSTALLED APPLICATIONS INFORMATION");
+
+  class ApplicationInfo {
+  public:
+    wxString name;
+    wxString version;
+    wxString description;
+    wxString architecture;
+    wxString licenses;
+    wxString size;
+    wxString installReason;
+    wxString dependsOn;
+    wxString installDate;
+    wxString url;
+  };
+
+  class ApplicationsPanel : public wxPanel {
+  public:
+    ApplicationsPanel(wxWindow *parent) : wxPanel(parent, wxID_ANY) {
+      try {
+        CreateControls();
+        PopulateList();
+      } catch (const std::exception &e) {
+        wxLogError("Failed to initialize ApplicationsPanel: %s", e.what());
+        throw;
+      }
+    }
+
+  private:
+    wxListCtrl *m_listCtrl;
+    wxStaticText *m_statusText;
+
+    void CreateControls() {
+      wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
+
+      // Title
+      wxStaticText *title = new wxStaticText(this, wxID_ANY, "My APPLICATIONS");
+      if (!title) {
+        throw std::runtime_error("Failed to create title static text");
+      }
+      title->SetFont(title->GetFont().Scale(1.5).Bold());
+      mainSizer->Add(title, 0, wxALIGN_CENTER | wxALL, 10);
+
+      // List control
+      m_listCtrl =
+          new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                         wxLC_REPORT | wxLC_HRULES | wxLC_VRULES);
+      if (!m_listCtrl) {
+        throw std::runtime_error("Failed to create list control");
+      }
+      mainSizer->Add(m_listCtrl, 1, wxEXPAND | wxALL, 5);
+
+      // Add columns
+      wxArrayString columns = {
+          "Name", "Version",        "Description", "Architecture", "Licenses",
+          "Size", "Install Reason", "Depends On",  "Install Date", "URL"};
+      for (size_t i = 0; i < columns.size(); ++i) {
+        if (m_listCtrl->InsertColumn(i, columns[i]) == -1) {
+          throw std::runtime_error("Failed to insert column: " +
+                                   columns[i].ToStdString());
+        }
+      }
+
+      // Status text
+      m_statusText = new wxStaticText(this, wxID_ANY, "");
+      if (!m_statusText) {
+        throw std::runtime_error("Failed to create status text");
+      }
+      mainSizer->Add(m_statusText, 0, wxALIGN_LEFT | wxALL, 5);
+
+      SetSizer(mainSizer);
+
+      // Bind events
+      Bind(wxEVT_SIZE, &ApplicationsPanel::OnSize, this);
+    }
+
+    void PopulateList() {
+      try {
+        std::vector<ApplicationInfo> apps = GetInstalledApplications();
+
+        m_listCtrl->Freeze();
+
+        if (!m_listCtrl->DeleteAllItems()) {
+          throw std::runtime_error("Failed to clear list control");
+        }
+
+        for (size_t i = 0; i < apps.size(); ++i) {
+          const auto &app = apps[i];
+          long index = m_listCtrl->InsertItem(i, app.name);
+          if (index == -1) {
+            throw std::runtime_error("Failed to insert item into list control");
+          }
+
+          if (!m_listCtrl->SetItem(index, 1, app.version) ||
+              !m_listCtrl->SetItem(index, 2, app.description) ||
+              !m_listCtrl->SetItem(index, 3, app.architecture) ||
+              !m_listCtrl->SetItem(index, 4, app.licenses) ||
+              !m_listCtrl->SetItem(index, 5, app.size) ||
+              !m_listCtrl->SetItem(index, 6, app.installReason) ||
+              !m_listCtrl->SetItem(index, 7, app.dependsOn) ||
+              !m_listCtrl->SetItem(index, 8, app.installDate) ||
+              !m_listCtrl->SetItem(index, 9, app.url)) {
+            throw std::runtime_error("Failed to set item in list control");
+          }
+
+          // Set alternating row colors
+          wxColour color =
+              (i % 2 == 0) ? wxSystemSettings::GetColour(wxSYS_COLOUR_LISTBOX)
+                           : wxSystemSettings::GetColour(wxSYS_COLOUR_BTNFACE);
+          m_listCtrl->SetItemBackgroundColour(index, color);
+        }
+
+        m_listCtrl->Thaw();
+
+        // Update status text
+        int totalDeps = 0;
+        for (const auto &app : apps) {
+          totalDeps += wxStringTokenizer(app.dependsOn, " ").CountTokens();
+        }
+        wxString statusText =
+            wxString::Format("Total applications: %zu, Total dependencies: %d",
+                             apps.size(), totalDeps);
+        m_statusText->SetLabel(statusText);
+
+        AdjustColumnWidths();
+      } catch (const std::exception &e) {
+        wxLogError("Failed to populate list: %s", e.what());
+        m_statusText->SetLabel("Error: Failed to load application data");
+      }
+    }
+
+    std::vector<ApplicationInfo> GetInstalledApplications() {
+      std::vector<ApplicationInfo> apps;
+      wxArrayString output, errors;
+
+      long exitCode = wxExecute("pacman -Qi", output, errors, wxEXEC_SYNC);
+      if (exitCode != 0) {
+        wxString errorMsg = "Failed to execute 'pacman -Qi'. Exit code: " +
+                            wxString::Format("%ld", exitCode);
+        if (!errors.IsEmpty()) {
+          errorMsg += "\nErrors: " + wxJoin(errors, '\n');
+        }
+        throw std::runtime_error(errorMsg.ToStdString());
+      }
+
+      ApplicationInfo currentApp;
+      for (const auto &line : output) {
+        if (line.StartsWith("Name ")) {
+          if (!currentApp.name.IsEmpty()) {
+            apps.push_back(currentApp);
+            currentApp = ApplicationInfo();
+          }
+          currentApp.name = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Version ")) {
+          currentApp.version = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Description ")) {
+          currentApp.description = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Architecture ")) {
+          currentApp.architecture = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Licenses ")) {
+          currentApp.licenses = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Installed Size ")) {
+          currentApp.size = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Install Reason ")) {
+          currentApp.installReason = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Depends On ")) {
+          currentApp.dependsOn = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("Install Date ")) {
+          currentApp.installDate = line.AfterFirst(':').Trim();
+        } else if (line.StartsWith("URL ")) {
+          currentApp.url = line.AfterFirst(':').Trim();
+        }
+      }
+
+      if (!currentApp.name.IsEmpty()) {
+        apps.push_back(currentApp);
+      }
+
+      if (apps.empty()) {
+        throw std::runtime_error("No applications found");
+      }
+
+      return apps;
+    }
+
+    void AdjustColumnWidths() {
+      int totalWidth = m_listCtrl->GetClientSize().GetWidth();
+      int numColumns = m_listCtrl->GetColumnCount();
+      if (numColumns <= 0) {
+        wxLogWarning("No columns found in list control");
+        return;
+      }
+
+      int avgWidth = totalWidth / numColumns;
+      for (int i = 0; i < numColumns; ++i) {
+        m_listCtrl->SetColumnWidth(i, avgWidth);
+      }
+    }
+
+    void OnSize(wxSizeEvent &event) {
+      AdjustColumnWidths();
+      event.Skip();
+    }
+  };
+
+  ApplicationsPanel *applications = new ApplicationsPanel(appsInfoPage);
+  appInfoSizer->Add(applications, 1, wxEXPAND | wxALL, 5);
+  appsInfoPage->SetSizer(appInfoSizer);
+  appsInfoPage->Layout();
 
   /************ END: END OF PAGE 4 ***************************/
 
-  // Add some contents to each page
-  wxStaticText *text4 =
-      new wxStaticText(cpuInfoPage, wxID_ANY, "This is CPU fetails page");
-
   // Add pages to treebook
-  treebook->AddPage(systeminfoPage, "System Information");    //page1
-  treebook->AddPage(resourcesInfoPage, "Processes/Threads");  //page2
-  treebook->AddPage(miscInfoPage, "Miscellaneous Info");      //page3
-  treebook->AddPage(cpuInfoPage, "CPU Details");              //page4
+  treebook->AddPage(systeminfoPage, "System Information");   // page1
+  treebook->AddPage(resourcesInfoPage, "Processes/Threads"); // page2
+  treebook->AddPage(miscInfoPage, "Miscellaneous Info");     // page3
+  treebook->AddPage(appsInfoPage, "Installed Applications"); // page4
 
   // use a sizer to layout the treebook with the frame
   wxBoxSizer *sizer = new wxBoxSizer(wxVERTICAL);
@@ -1172,7 +2496,8 @@ MyFrame::MyFrame() : wxFrame(nullptr, wxID_ANY, "Sytem Information") {
   Bind(wxEVT_MENU, &MyFrame::OnExit, this, wxID_EXIT);
 
   // Set App Icon
-  wxString iconPath = wxFileName::GetCwd() + wxFILE_SEP_PATH + "favicon.ico";
+  // wxString iconPath = wxFileName::GetCwd() + wxFILE_SEP_PATH + "favicon.ico";
+  wxString iconPath = "./favicon.ico";
   if (wxFileExists(iconPath)) {
     wxIcon icon;
     if (icon.LoadFile(iconPath, wxBITMAP_TYPE_ICO)) {
