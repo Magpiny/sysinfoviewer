@@ -84,5 +84,8 @@ Thumbs.db
 *.swp
 *~
 
+# AppImage
+*.AppImage
+
 # Logs
 *.log
