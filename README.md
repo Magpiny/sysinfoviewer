@@ -14,7 +14,8 @@ SysInfoViewer is a C++ application that provides detailed system information for
 - Applications installed in the computer
 
 ## Sample Screenshots
-![sysinfo3](https://github.com/user-attachments/assets/81ab16a2-5fdc-47a9-aeac-8858188ee6ae)
+![Screenshot from 2024-07-03 15-21-54](https://github.com/user-attachments/assets/0dd5c13f-dfc1-4110-9f06-b1d38bb7258b)
+
 ![Screenshot from 2024-07-29 21-45-03](https://github.com/user-attachments/assets/d2b934b3-102e-42a6-8f0e-545547d7b164)
 ![Screenshot from 2024-07-29 21-44-54](https://github.com/user-attachments/assets/dc771418-dd48-4398-9c2f-3dac01af1770)
 ![Screenshot from 2024-07-29 21-44-33](https://github.com/user-attachments/assets/a4259165-c210-45f9-884f-080bad918951)
