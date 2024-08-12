@@ -12,6 +12,14 @@ SysInfoViewer is a C++ application that provides detailed system information for
 - Process List with Resource Usage
 - Miscellaneous System Information
 
+## Sample Screenshots
+![sysinfo3](https://github.com/user-attachments/assets/81ab16a2-5fdc-47a9-aeac-8858188ee6ae)
+![Screenshot from 2024-07-29 21-45-03](https://github.com/user-attachments/assets/d2b934b3-102e-42a6-8f0e-545547d7b164)
+![Screenshot from 2024-07-29 21-44-54](https://github.com/user-attachments/assets/dc771418-dd48-4398-9c2f-3dac01af1770)
+![Screenshot from 2024-07-29 21-44-33](https://github.com/user-attachments/assets/a4259165-c210-45f9-884f-080bad918951)
+![Screenshot from 2024-07-29 21-44-11](https://github.com/user-attachments/assets/7731bdf6-00a8-4075-86b5-1218e8093588)
+
+
 ## Prerequisites
 
 Before building and installing SysInfoViewer, ensure you have the following prerequisites installed on your system:
@@ -63,7 +71,7 @@ This will install the SysInfoViewer executable and necessary resources to your s
 
 ## Running the Application
 
-After installation, you can run SysInfoViewer by executing:
+After installation, you can run SysInfoViewer by executing this command from your terminal:
 
 ```bash
 SysInfoViewer
