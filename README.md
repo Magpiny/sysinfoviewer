@@ -95,7 +95,7 @@ Contributions to SysInfoViewer are welcome. Please feel free to submit pull requ
 
 ## Author
 
-SysInfoViewer is developed by Wanjare Samuel. For any questions or concerns, please contact: wanjaresamuel@gmail.com
+SysInfoViewer is developed by Magpiny. For any questions or concerns, please contact: magpinyb@gmail.com
 
 ## Acknowledgments
 
