@@ -31,9 +31,13 @@ Before building and installing SysInfoViewer, ensure you have the following prer
 - wxWidgets library (version 3.2.5 or later)
   - Install cmake from here
     
-  ```wget https://github.com/Kitware/CMake/releases/download/v3.29.6/cmake-3.29.6-linux-x86_64.tar.gz```
+  ```bash
+  wget https://github.com/Kitware/CMake/releases/download/v3.29.6/cmake-3.29.6-linux-x86_64.tar.gz
+  ```
   
-  ```tar -zxvf cmake-3.29.6-linux-x86_64.tar.gz ```
+  ```bash
+  tar -zxvf cmake-3.29.6-linux-x86_64.tar.gz
+  ```
 
 - Git (for cloning the repository)
 
