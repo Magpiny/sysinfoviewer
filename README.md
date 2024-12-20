@@ -1,3 +1,5 @@
+# [![Codacy Badge](https://app.codacy.com/project/badge/Grade/c193438e7dd4481e82e4a217aaa22dcb)](https://app.codacy.com/gh/Magpiny/sysinfoviewer/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
+
 # SysInfoViewer
 
 SysInfoViewer is a C++ application that provides detailed system information for Linux systems. It offers a user-friendly graphical interface to display various system metrics, including CPU usage, memory usage, disk usage, battery information, and process details.
