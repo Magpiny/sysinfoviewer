@@ -1,3 +1,4 @@
+[![Codacy Badge](https://api.codacy.com/project/badge/Grade/8660311cbf7f402fb555c1c72c62c119)](https://app.codacy.com/gh/Magpiny/sysinfoviewer?utm_source=github.com&utm_medium=referral&utm_content=Magpiny/sysinfoviewer&utm_campaign=Badge_Grade)
 # [![Codacy Badge](https://app.codacy.com/project/badge/Grade/c193438e7dd4481e82e4a217aaa22dcb)](https://app.codacy.com/gh/Magpiny/sysinfoviewer/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
 
 # SysInfoViewer
