@@ -16,7 +16,7 @@ SysInfoViewer is a C++ application that provides detailed system information for
 
 Before building and installing SysInfoViewer, ensure you have the following prerequisites installed on your system:
 
-- C++ Compiler (GCC 11 or later, supporting C++23)
+- C++ Compiler (GCC 14 or later, supporting C++23)
 - CMake (version 3.29.6 or later)
 - wxWidgets library (version 3.2.5 or later)
 - Git (for cloning the repository)

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Name=System Info Viewer
+Comment=View system information
+Exec=/usr/local/bin/SysInfoViewer
+Icon=/usr/local/share/SysInfoViewer/favicon.ico
+Terminal=false
+Type=Application
+Categories=System;

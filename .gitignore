@@ -1,8 +1,10 @@
 # Ignore the build directory
 /build/
+/bin/
 
 # Ignore all files and subdirectories within the build directory
 /build/**/*
+/bin/**/*
 
 # Compiled Object files
 *.slo
