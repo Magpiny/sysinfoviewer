@@ -20,6 +20,19 @@ Before building and installing SysInfoViewer, ensure you have the following prer
 - CMake (version 3.29.6 or later)
 - wxWidgets library (version 3.2.5 or later)
 - Git (for cloning the repository)
+- #### Libraries (Make sure alsa(for soundcards detection) and curl(for network detection) libraries are installed in the system)
+    * Curl
+ 
+```bash sudo apt install libcurl4t64 libcurlpp```
+    
+    * * Alsa
+        + Arch based distros e.g Manjaro
+            
+```bash sudo pamac install manjaro-alsa```
+        
+      + Debian based distros
+        ```bash sudo apt install libasound2 libasound2-dev```
+   
 
 ## Cloning the Repository
 
