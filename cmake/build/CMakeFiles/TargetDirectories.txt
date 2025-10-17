@@ -1,0 +1,9 @@
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/SysInfoViewer.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/package.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/package_source.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/edit_cache.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/rebuild_cache.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/list_install_components.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/install.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/install/local.dir
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/cmake/build/CMakeFiles/install/strip.dir

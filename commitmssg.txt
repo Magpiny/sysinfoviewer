@@ -1,0 +1,14 @@
+feat: Add cross-distro CI with AppImage generation
+
+  This commit introduces a GitHub Actions workflow for continuous integration
+  that performs cross-distro builds for Ubuntu, Fedora, and Arch Linux.
+  Additionally, it includes a step to generate an AppImage for the application.
+
+  The workflow is configured to run on pushes and pull requests to the main branch.
+
+   - Ubuntu Build: Builds the project on an Ubuntu environment.
+   - Fedora Build: Builds the project within a Fedora Docker container.
+   - Arch Build: Builds the project within an Arch Linux Docker container.
+   - AppImage Generation: Creates a portable AppImage using linuxdeploy
+    and appimagetool, making the application easily distributable across
+    various Linux distributions.

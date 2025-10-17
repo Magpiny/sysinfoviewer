@@ -1,6 +1,10 @@
 # Ignore the build directory
 /build/
 /bin/
+bin
+build
+commitmssg.txt
+.cache/*
 
 # Ignore all files and subdirectories within the build directory
 /build/**/*
