@@ -87,7 +87,7 @@ jobs:
       - name: Install Dependencies (Fedora)
         run: |
           dnf update -y
-          dnf install -y gcc-c++ cmake wxGTK3-devel libcurl-devel alsa-lib-devel
+          dnf install -y gcc-c++ cmake wxGTK-devel libcurl-devel alsa-lib-devel
 
       - name: Cache CMake build
         uses: actions/cache@v4
