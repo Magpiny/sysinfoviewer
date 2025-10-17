@@ -46,7 +46,7 @@ install(FILES favicon.ico
     COMPONENT resources)
 
 # CPack configuration
-set(CPACK_GENERATOR "TGZ")
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
 set(CPACK_PACKAGE_NAME "SysInfoViewer")
 set(CPACK_PACKAGE_VENDOR "Wanjare Samuel")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "System Information Viewer")
