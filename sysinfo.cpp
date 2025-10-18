@@ -85,6 +85,7 @@
 #include <random>
 #include <resolv.h>
 #include <string>
+#include <print>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <thread>
@@ -1411,44 +1412,33 @@ public:
         wxBoxSizer* mainSizer = new wxBoxSizer(wxVERTICAL);
         SetSizer(mainSizer);
 
-        // Calculate base font size based on display DPI
         CalculateBaseFontSize();
-
-        // Collect all display information
         CollectSystemInfo();
-
-        // Create UI elements
         CreateInfoDisplay();
 
-        // Handle resizing
         Bind(wxEVT_SIZE, &DisplayInfoPanel::OnSize, this);
     }
 
 private:
     struct SystemInfo {
-        wxString desktopEnv;
+        std::optional<wxString> desktopEnv;
         unsigned displayCount = 0;
-        wxString resolution;
-        wxString refreshRate;
-        int colorDepth = 0;
-        int brightness = 0;
-        wxString manufacturer;
-        wxString model;
-        wxString screenSizeInches;
+        std::optional<wxString> resolution;
+        std::optional<wxString> refreshRate;
+        std::optional<int> colorDepth;
+        std::optional<int> brightness;
+        std::optional<wxString> manufacturer;
+        std::optional<wxString> model;
+        std::optional<wxString> screenSizeInches;
     } m_systemInfo;
 
-    int m_baseFontSize = 10; // Will be calculated based on DPI
+    int m_baseFontSize = 10;
     std::vector<wxStaticText*> m_infoLabels;
 
     void CalculateBaseFontSize() {
-        // Get screen DPI
-        wxDisplay display(0u); // Explicitly specify display index
+        wxDisplay display(0u);
         wxSize ppi = display.GetPPI();
-
-        // Calculate base font size (scaled between 10-16 based on DPI)
         m_baseFontSize = wxMax(10, wxMin(ppi.GetWidth() / 10, 16));
-
-        // Adjust for high-DPI displays
         if (ppi.GetWidth() > 120) {
             m_baseFontSize += 2;
         }
@@ -1460,46 +1450,32 @@ private:
     }
 
     void UpdateFontSizes() {
-        // Calculate dynamic font size based on window width
         int windowWidth = GetSize().GetWidth();
-        int dynamicSize = wxMax(m_baseFontSize - 2,
-                              wxMin(m_baseFontSize + 2,
-                                   windowWidth / 50));
-
+        int dynamicSize = wxMax(m_baseFontSize - 2, wxMin(m_baseFontSize + 2, windowWidth / 50));
         wxFont font = GetFont();
         font.SetPointSize(dynamicSize);
-
-        // Apply to all labels
         for (auto* label : m_infoLabels) {
             label->SetFont(font);
         }
-
         Layout();
     }
 
     void CollectSystemInfo() {
-        // Desktop Environment
         m_systemInfo.desktopEnv = GetDesktopEnvironment();
-
-        // Display Count
         try {
             m_systemInfo.displayCount = wxDisplay::GetCount();
         } catch (...) {
             m_systemInfo.displayCount = 0;
         }
 
-        // Primary display details from xrandr
         wxArrayString xrandr_output;
         if (wxExecute("xrandr", xrandr_output) == 0) {
             for (const wxString& line : xrandr_output) {
-                if (line.Contains(" connected primary")) { // Look for primary display
-                    // Parse resolution
+                if (line.Contains(" connected primary")) {
                     wxRegEx re(" (\\d+x\\d+) ");
                     if (re.Matches(line)) {
                         m_systemInfo.resolution = re.GetMatch(line, 1);
                     }
-
-                    // Parse physical size and calculate inches
                     wxRegEx size_re(" (\\d+)mm x (\\d+)mm");
                     if (size_re.Matches(line)) {
                         double width_mm, height_mm;
@@ -1510,65 +1486,55 @@ private:
                             m_systemInfo.screenSizeInches = wxString::Format("%.1f\"", diagonal_inches);
                         }
                     }
-                    break; // Found primary, stop.
+                    break;
                 }
             }
         }
 
-        // Fallback for resolution if xrandr parsing fails
-        if (m_systemInfo.resolution.empty() && m_systemInfo.displayCount > 0) {
+        if (!m_systemInfo.resolution && m_systemInfo.displayCount > 0) {
             wxDisplay display(0u);
             wxRect geom = display.GetGeometry();
             m_systemInfo.resolution = wxString::Format("%dx%d", geom.width, geom.height);
         }
 
-        // Color Depth
         if (m_systemInfo.displayCount > 0) {
             try {
-                wxDisplay display(0u); // Explicitly specify display index
+                wxDisplay display(0u);
                 wxVideoMode mode = display.GetCurrentMode();
                 m_systemInfo.colorDepth = mode.GetDepth();
-            } catch (...) {
-                // silent fail
-            }
+            } catch (...) {}
         }
 
-        // Get more detailed info
         m_systemInfo.refreshRate = GetRefreshRate();
         m_systemInfo.brightness = GetBrightness();
-
-        // Get EDID info
-        GetEdidInfo(m_systemInfo.manufacturer, m_systemInfo.model);
+        auto edidInfo = GetEdidInfo();
+        if (edidInfo) {
+            m_systemInfo.manufacturer = edidInfo->first;
+            m_systemInfo.model = edidInfo->second;
+        }
     }
 
-    wxString GetDesktopEnvironment() {
-        // Try XDG_CURRENT_DESKTOP first
+    std::optional<wxString> GetDesktopEnvironment() {
         const char* de = std::getenv("XDG_CURRENT_DESKTOP");
         if (de) return wxString(de);
-
-        // Fallback to checking version files
         wxArrayString output;
         if (wxExecute("cat /etc/*-release | grep PRETTY_NAME", output) == 0 && !output.IsEmpty()) {
             wxString prettyName = output[0].AfterFirst('=').Trim().Trim(false);
-            prettyName = prettyName.Mid(1, prettyName.Length() - 2); // Remove quotes
+            prettyName = prettyName.Mid(1, prettyName.Length() - 2);
             return prettyName;
         }
-
-        return wxEmptyString;
+        return std::nullopt;
     }
 
-    wxString GetRefreshRate() {
-        // Use xrandr to get the refresh rate. It's a common tool on X11.
+    std::optional<wxString> GetRefreshRate() {
         wxArrayString output;
-        if (wxExecute("xrandr", output) == 0) { // FIX: wxExecute returns 0 on success
+        if (wxExecute("xrandr", output) == 0) {
             for (const wxString& line : output) {
-                // The line with the current mode has a '*'
                 if (line.Contains("*")) {
                     wxStringTokenizer tokenizer(line);
                     while (tokenizer.HasMoreTokens()) {
                         wxString token = tokenizer.GetNextToken();
                         if (token.Contains('*')) {
-                            // The token is something like "60.05*+"
                             token.Replace("*", "");
                             token.Replace("+", "");
                             double rate;
@@ -1580,10 +1546,10 @@ private:
                 }
             }
         }
-        return "Unknown";
+        return std::nullopt;
     }
 
-    int GetBrightness() {
+    std::optional<int> GetBrightness() {
         namespace fs = std::filesystem;
         const fs::path backlight_path("/sys/class/backlight");
         if (fs::exists(backlight_path)) {
@@ -1602,23 +1568,19 @@ private:
                 }
             }
         }
-        return 0; // Return 0 if not found
+        return std::nullopt;
     }
 
     bool GetEdidFromDrm(std::vector<unsigned char>& edid_data) {
-        for (int i = 0; i < 16; ++i) { // Try card0 to card15
+        for (int i = 0; i < 16; ++i) {
             std::string card_path = "/dev/dri/card" + std::to_string(i);
             int fd = open(card_path.c_str(), O_RDONLY);
-            if (fd < 0) {
-                continue; // Try next card
-            }
-
+            if (fd < 0) continue;
             drmModeRes *res = drmModeGetResources(fd);
             if (!res) {
                 close(fd);
                 continue;
             }
-
             bool found = false;
             for (int j = 0; j < res->count_connectors; ++j) {
                 drmModeConnector *conn = drmModeGetConnector(fd, res->connectors[j]);
@@ -1641,7 +1603,6 @@ private:
                 drmModeFreeConnector(conn);
                 if (found) break;
             }
-
             drmModeFreeResources(res);
             close(fd);
             if (found) return true;
@@ -1649,22 +1610,21 @@ private:
         return false;
     }
 
-    void GetEdidInfo(wxString& manufacturer, wxString& model) {
+    std::optional<std::pair<wxString, wxString>> GetEdidInfo() {
         std::vector<unsigned char> edid;
         if (GetEdidFromDrm(edid) && edid.size() >= 128) {
-            // Parse EDID data
-            manufacturer = wxString::Format("%c%c%c",
+            wxString manufacturer = wxString::Format("%c%c%c",
                 ((edid[8] & 0x7C) >> 2) + 'A' - 1,
                 (((edid[8] & 0x03) << 3) | ((edid[9] & 0xE0) >> 5)) + 'A' - 1,
                 (edid[9] & 0x1F) + 'A' - 1);
-
+            wxString model;
             for (int i = 54; i < 126; i += 18) {
-                if (edid[i] == 0x00 && edid[i+1] == 0x00 && edid[i+2] == 0x00) { // Display Descriptor
+                if (edid[i] == 0x00 && edid[i+1] == 0x00 && edid[i+2] == 0x00) {
                     int desc_type = edid[i+3];
-                    if (desc_type == 0xFC || desc_type == 0xFE) { // Display Name or Alphanumeric Data String
+                    if (desc_type == 0xFC || desc_type == 0xFE) {
                         wxString str;
                         for (int j = 5; j < 18; ++j) {
-                            if (edid[i+j] == 0x0A) break; // newline
+                            if (edid[i+j] == 0x0A) break;
                             if (edid[i+j] >= 32 && edid[i+j] <= 126) {
                                 str += static_cast<char>(edid[i+j]);
                             }
@@ -1677,7 +1637,9 @@ private:
                     }
                 }
             }
+            return std::make_pair(manufacturer, model);
         }
+        return std::nullopt;
     }
 
     void CreateInfoDisplay() {
@@ -1693,48 +1655,32 @@ private:
             m_infoLabels.push_back(label);
         };
 
-        // Desktop Environment
-        if (!m_systemInfo.desktopEnv.empty()) {
-            AddInfoLine("DE: " + m_systemInfo.desktopEnv);
+        if (m_systemInfo.desktopEnv) {
+            AddInfoLine("DE: " + *m_systemInfo.desktopEnv);
         }
-
-        // Display Count
         AddInfoLine(wxString::Format("Displays: %u", m_systemInfo.displayCount));
-
-        // Resolution
-        if (!m_systemInfo.resolution.empty()) {
-            AddInfoLine("Resolution: " + m_systemInfo.resolution);
+        if (m_systemInfo.resolution) {
+            AddInfoLine("Resolution: " + *m_systemInfo.resolution);
         }
-
-        // Screen Size
-        if (!m_systemInfo.screenSizeInches.empty()) {
-            AddInfoLine("Screen Size: " + m_systemInfo.screenSizeInches);
+        if (m_systemInfo.screenSizeInches) {
+            AddInfoLine("Screen Size: " + *m_systemInfo.screenSizeInches);
         }
-
-        // Refresh Rate
-        if (m_systemInfo.refreshRate != "Unknown") {
-            AddInfoLine(wxString::Format("Refreshrate: %sHz", m_systemInfo.refreshRate));
+        if (m_systemInfo.refreshRate) {
+            AddInfoLine(wxString::Format("Refreshrate: %sHz", *m_systemInfo.refreshRate));
         }
-
-        // Color Depth
-        if (m_systemInfo.colorDepth > 0) {
-            AddInfoLine(wxString::Format("Color Depth: %d bit", m_systemInfo.colorDepth));
+        if (m_systemInfo.colorDepth) {
+            AddInfoLine(wxString::Format("Color Depth: %d bit", *m_systemInfo.colorDepth));
         }
-
-        // Brightness
-        AddInfoLine(wxString::Format("Brightness: %d%%", m_systemInfo.brightness));
-
-        // Manufacturer
-        if (!m_systemInfo.manufacturer.empty()) {
-            AddInfoLine("Display Manufacturer: " + m_systemInfo.manufacturer);
+        if (m_systemInfo.brightness) {
+            AddInfoLine(wxString::Format("Brightness: %d%%", *m_systemInfo.brightness));
         }
-
-        // Model
-        if (!m_systemInfo.model.empty()) {
-            AddInfoLine("Display Model: " + m_systemInfo.model);
+        if (m_systemInfo.manufacturer) {
+            AddInfoLine("Display Manufacturer: " + *m_systemInfo.manufacturer);
         }
+        // if (m_systemInfo.model) {
+        //     AddInfoLine("Display Model: " + *m_systemInfo.model);
+        // }
 
-        // Initial font size update
         UpdateFontSizes();
     }
 };
@@ -2698,8 +2644,8 @@ class CPUDetailsPanel : public wxScrolledWindow {
 MyFrame::MyFrame() : wxFrame(nullptr, wxID_ANY, "Sytem Information") {
 
   wxMenu *menuFile = new wxMenu;
-  menuFile->Append(ID_Hello, "&Hello...\tCtrl-H",
-                   "Help string shown in status bar for this menu item");
+  menuFile->Append(ID_Hello, "&Hello...\tCtrl-I",
+                   "Show system information summary");
   menuFile->AppendSeparator();
   menuFile->Append(wxID_EXIT);
 
@@ -2743,14 +2689,22 @@ void MyFrame::OnAbout(wxCommandEvent &event) {
 };
 
 void MyFrame::OnHello(wxCommandEvent &event) {
-  wxLogMessage("This application is running under %s.\n \
-      Toolkit Type: wxGTK3\n \
-      Toolkit Used: %s.",
-               wxPlatformInfo::Get().GetOperatingSystemIdName(),
-               wxVERSION_STRING);
+    wxString osDesc = wxPlatformInfo::Get().GetOperatingSystemDescription();
+    wxString userName = wxGetUserName();
+    wxString currentTime = wxNow();
+    wxString title = wxString::Format("Hello %s", userName);  // Concatenation instead of Format
+
+    wxMessageBox(wxString::Format(
+        "User: %s\nDate: %s \nOS: %s",
+        userName,
+        currentTime,
+        osDesc
+    ), title, wxOK | wxICON_INFORMATION);
 }
 
 /*
  * NOTE: I'm writing C++ 23 in 2024 because I'm crazy NO! NO, It's because I'm
  * badass shitty s/w engineer! I hope you enjoy the monolith. Check!
+ * Aol jowadu! Aol jowadu! Aol jowadu! Rao001 will be laid to rest tomorrow!
+ * Next time I come here I'll have RAO001 timer
  */

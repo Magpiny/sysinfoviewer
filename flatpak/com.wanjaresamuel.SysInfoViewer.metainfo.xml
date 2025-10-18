@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Copyright 2025 Wanjare Samuel -->
+<component type="desktop-application">
+  <id>com.wanjaresamuel.SysInfoViewer</id>
+
+  <name>System Info Viewer</name>
+  <summary>View detailed system information</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <developer_name>Wanjare Samuel</developer_name>
+
+  <description>
+    <p>
+      System Info Viewer is a comprehensive utility that displays detailed information
+      about your computer's hardware and software configuration.
+    </p>
+    <p>Features include:</p>
+    <ul>
+      <li>CPU information and specifications</li>
+      <li>Memory and RAM details</li>
+      <li>Storage devices and disk information</li>
+      <li>Display and graphics card details</li>
+      <li>Audio devices and sound card information</li>
+      <li>Network interfaces and connectivity</li>
+      <li>Operating system details</li>
+    </ul>
+    <p>
+      Perfect for system administrators, power users, and anyone who needs quick
+      access to detailed hardware information.
+    </p>
+  </description>
+
+  <launchable
+        type="desktop-id"
+    >com.wanjaresamuel.SysInfoViewer.desktop</launchable>
+
+  <screenshots>
+    <screenshot type="default">
+      <image
+            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/main_window.png</image>
+      <caption>Main window showing system information</caption>
+    </screenshot>
+    <!-- Add more screenshots as needed -->
+    <screenshot>
+      <image
+            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/cpu_info.png</image>
+      <caption>Detailed CPU information</caption>
+    </screenshot>
+    <screenshot>
+      <image
+            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/installed_apps.png</image>
+      <caption>Detailed installed applications information</caption>
+    </screenshot>
+  </screenshots>
+
+  <url type="homepage">https://github.com/Magpiny/sysinfoviewer</url>
+  <url type="bugtracker">https://github.com/Magpiny/sysinfoviewer/issues</url>
+  <url type="help">https://github.com/Magpiny/sysinfoviewer/wiki</url>
+  <!-- Optional: Add donation link if applicable -->
+  <!-- <url type="donation">https://yourusername.com/donate</url> -->
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1.0" date="2025-01-15">
+      <description>
+        <p>Initial release</p>
+        <ul>
+          <li>Display CPU information</li>
+          <li>Show memory and storage details</li>
+          <li>Show running processes</li>
+          <li>Show audio devices</li>
+          <li>Network interface information</li>
+          <li>Show installed apps and their details</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <categories>
+    <category>System</category>
+    <category>Utility</category>
+  </categories>
+
+  <keywords>
+    <keyword>system</keyword>
+    <keyword>information</keyword>
+    <keyword>hardware</keyword>
+    <keyword>specs</keyword>
+    <keyword>monitor</keyword>
+  </keywords>
+
+  <provides>
+    <binary>SysInfoViewer</binary>
+  </provides>
+
+  <recommends>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </recommends>
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+</component>
