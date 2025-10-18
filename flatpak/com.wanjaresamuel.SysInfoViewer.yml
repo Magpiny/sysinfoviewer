@@ -69,7 +69,7 @@ modules:
     sources:
       - type: archive
         url: https://dri.freedesktop.org/libdrm/libdrm-2.4.120.tar.xz
-        sha256: 3baa004c46c065e88d7e6b3c0d9f0e191538e1be7f4c9fb66c1b4e8f82e8fa42
+        sha256: 3bf55363f76c7250946441ab51d3a6cc0ae518055c0ff017324ab76cdefb327a
         x-checker-data:
           type: anitya
           project-id: 1596
@@ -92,7 +92,7 @@ modules:
     sources:
       - type: archive
         url: https://github.com/ImageMagick/ImageMagick/archive/7.1.1-29.tar.gz
-        sha256: c5a8e415b0bdf11c89ddbb0ac0e804e016ab9f8c6e0f89d44001e9bf5f2e020e
+        sha256: 27bd25f945efdd7e38f6f9845a7c0a391fdb732f652dda140b743769c5f106e8
 
   # Your application
   - name: sysinfoviewer
@@ -105,7 +105,7 @@ modules:
       - type: git
         url: https://github.com/Magpiny/SysInfoViewer.git
         tag: v0.2.0
-        commit: YOUR_COMMIT_SHA_HERE
+        commit: fc361f12dba292e4065a54e2a96b30abb9761583
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
