@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.29.6)
 project(SysInfoViewer VERSION 0.1.0 LANGUAGES CXX)
 
-set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix" FORCE)
+set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix")
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 23)
@@ -44,7 +44,7 @@ if(DRM_FOUND)
 endif()
 
 # Include directories
-target_include_directories(${PROJECT_NAME} PRIVATE 
+target_include_directories(${PROJECT_NAME} PRIVATE
     ${wxWidgets_INCLUDE_DIRS}
     ${DRM_INCLUDE_DIRS}
 )

@@ -107,8 +107,8 @@ modules:
       # Use git source for Flathub submission
       - type: git
         url: https://github.com/Magpiny/SysInfoViewer.git
-        tag: v0.1.0-1
-        commit: 277d272ba9f8a122df032da6e9048dc34db34ad0
+        tag: v0.2.0-1
+        commit: cd6c6e70a2c2409e0219cded02f881a92ae5ea40
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
