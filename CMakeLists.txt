@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.29.6)
 project(SysInfoViewer VERSION 0.1.0 LANGUAGES CXX)
 
+set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix" FORCE)
+
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +19,10 @@ include_directories(${CURL_INCLUDE_DIRS})
 # Find ALSA
 find_package(ALSA REQUIRED)
 
+# Find libdrm for display info
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(DRM REQUIRED libdrm)
+
 # Add source files
 set(SOURCES
     sysinfo.cpp
@@ -32,18 +38,29 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ${wxWidgets_LIBRARIES} ${CURL_LIBR
 # Link ALSA library
 target_link_libraries(${PROJECT_NAME} PRIVATE ALSA::ALSA)
 
-# Include directories
-target_include_directories(${PROJECT_NAME} PRIVATE ${wxWidgets_INCLUDE_DIRS})
+# Link libdrm
+if(DRM_FOUND)
+    target_link_libraries(${PROJECT_NAME} PRIVATE ${DRM_LIBRARIES})
+endif()
 
-# Install target
+# Include directories
+target_include_directories(${PROJECT_NAME} PRIVATE 
+    ${wxWidgets_INCLUDE_DIRS}
+    ${DRM_INCLUDE_DIRS}
+)
+
+# Modify your install commands to be more AppImage-friendly
 install(TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION bin
     COMPONENT applications)
 
-# Install additional files
+# Install icon (convert .ico to .png for better Linux compatibility)
 install(FILES favicon.ico
-    DESTINATION share/${PROJECT_NAME}
+    DESTINATION share/icons/hicolor/256x256/apps
+    RENAME sysinfoviewer.png  # AppImage prefers PNG
     COMPONENT resources)
+
+
 
 # CPack configuration
 set(CPACK_GENERATOR "TGZ;DEB;RPM")
@@ -60,11 +77,11 @@ file(WRITE ${DESKTOP_FILE}
 "[Desktop Entry]
 Name=System Info Viewer
 Comment=View system information
-Exec=${CMAKE_INSTALL_PREFIX}/bin/${PROJECT_NAME}
-Icon=${CMAKE_INSTALL_PREFIX}/share/${PROJECT_NAME}/favicon.ico
+Exec=SysInfoViewer
+Icon=sysinfoviewer
 Terminal=false
 Type=Application
-Categories=System;
+Categories=System;Utility;
 ")
 
 install(FILES ${DESKTOP_FILE}

@@ -1,0 +1,3 @@
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/AppDir/bin/SysInfoViewer
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/AppDir/share/icons/hicolor/256x256/apps/sysinfoviewer.png
+/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/AppDir/share/applications/SysInfoViewer.desktop

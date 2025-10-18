@@ -35,6 +35,7 @@
 #include <wx/process.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
+#include <wx/regex.h>
 
 #include <wx/treebook.h>
 #include <wx/txtstrm.h>
@@ -107,6 +108,12 @@
 
 // sound check
 #include <alsa/asoundlib.h>
+
+// DRM for display info
+#include <fcntl.h>
+#include <unistd.h>
+#include <xf86drm.h>
+#include <xf86drmMode.h>
 
 // app info
 #include <cstdio>
@@ -641,8 +648,19 @@ bool MyApp::OnInit() {
       new wxStaticText(systeminfoPage, wxID_ANY, osDescription);
   wxStaticText *osDistroCtrl =
       new wxStaticText(systeminfoPage, wxID_ANY, distroInfo);
+  wxArrayString uname_output;
+  wxString arch_str = "Unknown";
+  if (wxExecute("uname -m", uname_output) == 0 && !uname_output.IsEmpty()) {
+      if (uname_output[0] == "x86_64") {
+          arch_str = "64-bit";
+      } else if (uname_output[0].Contains("386") || uname_output[0].Contains("i686")) {
+          arch_str = "32-bit";
+      } else {
+          arch_str = uname_output[0];
+      }
+  }
   wxStaticText *cpuArchitecture =
-      new wxStaticText(systeminfoPage, wxID_ANY, platform.GetBitnessName());
+      new wxStaticText(systeminfoPage, wxID_ANY, arch_str);
 
   wxStaticText *desktopEnv =
       new wxStaticText(systeminfoPage, wxID_ANY, wxEmptyString);
@@ -1416,6 +1434,7 @@ private:
         int brightness = 0;
         wxString manufacturer;
         wxString model;
+        wxString screenSizeInches;
     } m_systemInfo;
 
     int m_baseFontSize = 10; // Will be calculated based on DPI
@@ -1469,26 +1488,57 @@ private:
             m_systemInfo.displayCount = 0;
         }
 
-        // Primary display details
+        // Primary display details from xrandr
+        wxArrayString xrandr_output;
+        if (wxExecute("xrandr", xrandr_output) == 0) {
+            for (const wxString& line : xrandr_output) {
+                if (line.Contains(" connected primary")) { // Look for primary display
+                    // Parse resolution
+                    wxRegEx re(" (\\d+x\\d+) ");
+                    if (re.Matches(line)) {
+                        m_systemInfo.resolution = re.GetMatch(line, 1);
+                    }
+
+                    // Parse physical size and calculate inches
+                    wxRegEx size_re(" (\\d+)mm x (\\d+)mm");
+                    if (size_re.Matches(line)) {
+                        double width_mm, height_mm;
+                        size_re.GetMatch(line, 1).ToDouble(&width_mm);
+                        size_re.GetMatch(line, 2).ToDouble(&height_mm);
+                        if (width_mm > 0 && height_mm > 0) {
+                            double diagonal_inches = std::sqrt(width_mm * width_mm + height_mm * height_mm) / 25.4;
+                            m_systemInfo.screenSizeInches = wxString::Format("%.1f\"", diagonal_inches);
+                        }
+                    }
+                    break; // Found primary, stop.
+                }
+            }
+        }
+
+        // Fallback for resolution if xrandr parsing fails
+        if (m_systemInfo.resolution.empty() && m_systemInfo.displayCount > 0) {
+            wxDisplay display(0u);
+            wxRect geom = display.GetGeometry();
+            m_systemInfo.resolution = wxString::Format("%dx%d", geom.width, geom.height);
+        }
+
+        // Color Depth
         if (m_systemInfo.displayCount > 0) {
             try {
                 wxDisplay display(0u); // Explicitly specify display index
-                wxRect geom = display.GetGeometry();
-                m_systemInfo.resolution = wxString::Format("%dx%d", geom.width, geom.height);
-
                 wxVideoMode mode = display.GetCurrentMode();
                 m_systemInfo.colorDepth = mode.GetDepth();
-
-                // Get more detailed info
-                m_systemInfo.refreshRate = GetRefreshRate();
-                m_systemInfo.brightness = GetBrightness();
-
-                // Get EDID info
-                GetEdidInfo(m_systemInfo.manufacturer, m_systemInfo.model);
             } catch (...) {
-                // Silently handle errors
+                // silent fail
             }
         }
+
+        // Get more detailed info
+        m_systemInfo.refreshRate = GetRefreshRate();
+        m_systemInfo.brightness = GetBrightness();
+
+        // Get EDID info
+        GetEdidInfo(m_systemInfo.manufacturer, m_systemInfo.model);
     }
 
     wxString GetDesktopEnvironment() {
@@ -1508,97 +1558,125 @@ private:
     }
 
     wxString GetRefreshRate() {
-        namespace fs = std::filesystem;
-        // Method 1: DRM/KMS modes parsing
-        const fs::path drm_path = "/sys/class/drm";
-        for (const auto& entry : fs::directory_iterator(drm_path)) {
-            if (entry.is_directory() && entry.path().filename().string().find("card") != std::string::npos) {
-                std::ifstream modes_file(entry.path() / "modes");
-                std::string line;
-                while (std::getline(modes_file, line)) {
-                    if (line.find('*') != std::string::npos) { // Current mode
-                        std::regex rate_regex(R"((\d+\.?\d*)\s*Hz)");
-                        std::smatch match;
-                        if (std::regex_search(line, match, rate_regex) && match.size() > 1) {
-                            return match[1].str() + " Hz";
-                        }
-                    }
-                }
-            }
-        }
-
-        // Method 2: EDID decoding (requires edid-decode)
-        for (const auto& entry : fs::directory_iterator(drm_path)) {
-            if (entry.is_directory()) {
-                std::ifstream edid_file(entry.path() / "edid", std::ios::binary);
-                if (edid_file) {
-                    std::system("edid-decode /sys/class/drm/*/edid 2>/dev/null | grep 'V Freq' | awk '{print $3}' > /tmp/edid.out");
-                    std::ifstream out("/tmp/edid.out");
-                    std::string rate;
-                    if (std::getline(out, rate) && !rate.empty()) {
-                        return rate + " Hz";
-                    }
-                }
-            }
-        }
-
-        // Method 3: Xrandr fallback
-        std::system("xrandr --current 2>/dev/null | grep '*' -A1 | grep -oP '\\d+\\.?\\d*Hz' > /tmp/xrandr.out");
-        std::ifstream xrandr_out("/tmp/xrandr.out");
-        std::string rate;
-        if (std::getline(xrandr_out, rate) && !rate.empty()) {
-            return rate;
-        }
-
-        return "Unknown";
-    }
-
-    int GetBrightness() {
+        // Use xrandr to get the refresh rate. It's a common tool on X11.
         wxArrayString output;
-        if (wxExecute("brightnessctl get", output) == 0 && !output.IsEmpty()) {
-            long value;
-            if (output[0].ToLong(&value)) {
-                return static_cast<int>(value);
-            }
-        }
-
-        // Alternative brightness detection
-        if (wxExecute("cat /sys/class/backlight/*/brightness", output) == 0 && !output.IsEmpty()) {
-            long value;
-            if (output[0].ToLong(&value)) {
-                return static_cast<int>(value);
-            }
-        }
-
-        return 0;
-    }
-
-    void GetEdidInfo(wxString& manufacturer, wxString& model) {
-        try {
-            const std::filesystem::path edidPath("/sys/class/drm/card0-eDP-1/edid");
-            if (std::filesystem::exists(edidPath)) {
-                std::ifstream file(edidPath.string(), std::ios::binary);
-                if (file) {
-                    unsigned char edid[128];
-                    if (file.read(reinterpret_cast<char*>(edid), 128)) {
-                        // Manufacturer ID
-                        manufacturer = wxString::Format("%c%c%c",
-                            ((edid[8] & 0x7C) >> 2) + 'A' - 1,
-                            ((edid[8] & 0x03) << 3 | (edid[9] & 0xE0) >> 5) + 'A' - 1,
-                            (edid[9] & 0x1F) + 'A' - 1);
-
-                        // Model
-                        for (int i = 54; i <= 71; i++) {
-                            if (edid[i] == 0x0A) break;
-                            if (edid[i] >= 32 && edid[i] <= 126) {
-                                model += static_cast<char>(edid[i]);
+        if (wxExecute("xrandr", output) == 0) { // FIX: wxExecute returns 0 on success
+            for (const wxString& line : output) {
+                // The line with the current mode has a '*'
+                if (line.Contains("*")) {
+                    wxStringTokenizer tokenizer(line);
+                    while (tokenizer.HasMoreTokens()) {
+                        wxString token = tokenizer.GetNextToken();
+                        if (token.Contains('*')) {
+                            // The token is something like "60.05*+"
+                            token.Replace("*", "");
+                            token.Replace("+", "");
+                            double rate;
+                            if (token.ToDouble(&rate)) {
+                                return wxString::Format("%.2f", rate);
                             }
                         }
                     }
                 }
             }
-        } catch (...) {
-            // Silently handle any errors
+        }
+        return "Unknown";
+    }
+
+    int GetBrightness() {
+        namespace fs = std::filesystem;
+        const fs::path backlight_path("/sys/class/backlight");
+        if (fs::exists(backlight_path)) {
+            for (const auto& entry : fs::directory_iterator(backlight_path)) {
+                if (entry.is_directory()) {
+                    fs::path brightness_file = entry.path() / "brightness";
+                    fs::path max_brightness_file = entry.path() / "max_brightness";
+                    if (fs::exists(brightness_file) && fs::exists(max_brightness_file)) {
+                        std::ifstream current_fs(brightness_file);
+                        std::ifstream max_fs(max_brightness_file);
+                        long current_val, max_val;
+                        if (current_fs >> current_val && max_fs >> max_val && max_val > 0) {
+                            return static_cast<int>((static_cast<double>(current_val) / max_val) * 100);
+                        }
+                    }
+                }
+            }
+        }
+        return 0; // Return 0 if not found
+    }
+
+    bool GetEdidFromDrm(std::vector<unsigned char>& edid_data) {
+        for (int i = 0; i < 16; ++i) { // Try card0 to card15
+            std::string card_path = "/dev/dri/card" + std::to_string(i);
+            int fd = open(card_path.c_str(), O_RDONLY);
+            if (fd < 0) {
+                continue; // Try next card
+            }
+
+            drmModeRes *res = drmModeGetResources(fd);
+            if (!res) {
+                close(fd);
+                continue;
+            }
+
+            bool found = false;
+            for (int j = 0; j < res->count_connectors; ++j) {
+                drmModeConnector *conn = drmModeGetConnector(fd, res->connectors[j]);
+                if (conn && conn->connection == DRM_MODE_CONNECTED) {
+                    for (int k = 0; k < conn->count_props; ++k) {
+                        drmModePropertyRes *prop = drmModeGetProperty(fd, conn->props[k]);
+                        if (prop && strcmp(prop->name, "EDID") == 0) {
+                            drmModePropertyBlobRes *blob = drmModeGetPropertyBlob(fd, conn->prop_values[k]);
+                            if (blob && blob->length > 0) {
+                                edid_data.assign((unsigned char*)blob->data, (unsigned char*)blob->data + blob->length);
+                                found = true;
+                                drmModeFreePropertyBlob(blob);
+                            }
+                            drmModeFreeProperty(prop);
+                            if (found) break;
+                        }
+                        if(prop) drmModeFreeProperty(prop);
+                    }
+                }
+                drmModeFreeConnector(conn);
+                if (found) break;
+            }
+
+            drmModeFreeResources(res);
+            close(fd);
+            if (found) return true;
+        }
+        return false;
+    }
+
+    void GetEdidInfo(wxString& manufacturer, wxString& model) {
+        std::vector<unsigned char> edid;
+        if (GetEdidFromDrm(edid) && edid.size() >= 128) {
+            // Parse EDID data
+            manufacturer = wxString::Format("%c%c%c",
+                ((edid[8] & 0x7C) >> 2) + 'A' - 1,
+                (((edid[8] & 0x03) << 3) | ((edid[9] & 0xE0) >> 5)) + 'A' - 1,
+                (edid[9] & 0x1F) + 'A' - 1);
+
+            for (int i = 54; i < 126; i += 18) {
+                if (edid[i] == 0x00 && edid[i+1] == 0x00 && edid[i+2] == 0x00) { // Display Descriptor
+                    int desc_type = edid[i+3];
+                    if (desc_type == 0xFC || desc_type == 0xFE) { // Display Name or Alphanumeric Data String
+                        wxString str;
+                        for (int j = 5; j < 18; ++j) {
+                            if (edid[i+j] == 0x0A) break; // newline
+                            if (edid[i+j] >= 32 && edid[i+j] <= 126) {
+                                str += static_cast<char>(edid[i+j]);
+                            }
+                        }
+                        str = str.Trim();
+                        if (!str.empty()) {
+                            model = str;
+                            break;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -1628,8 +1706,13 @@ private:
             AddInfoLine("Resolution: " + m_systemInfo.resolution);
         }
 
+        // Screen Size
+        if (!m_systemInfo.screenSizeInches.empty()) {
+            AddInfoLine("Screen Size: " + m_systemInfo.screenSizeInches);
+        }
+
         // Refresh Rate
-        if (m_systemInfo.refreshRate != "") {
+        if (m_systemInfo.refreshRate != "Unknown") {
             AddInfoLine(wxString::Format("Refreshrate: %sHz", m_systemInfo.refreshRate));
         }
 
@@ -1639,16 +1722,16 @@ private:
         }
 
         // Brightness
-        AddInfoLine(wxString::Format("Brightness: %d", m_systemInfo.brightness));
+        AddInfoLine(wxString::Format("Brightness: %d%%", m_systemInfo.brightness));
 
         // Manufacturer
         if (!m_systemInfo.manufacturer.empty()) {
-            AddInfoLine("Display Manufacture: %s" + m_systemInfo.manufacturer);
+            AddInfoLine("Display Manufacturer: " + m_systemInfo.manufacturer);
         }
 
         // Model
         if (!m_systemInfo.model.empty()) {
-            AddInfoLine("Display Model: %s" + m_systemInfo.model);
+            AddInfoLine("Display Model: " + m_systemInfo.model);
         }
 
         // Initial font size update
@@ -2269,9 +2352,21 @@ class CPUDetailsPanel : public wxScrolledWindow {
         }
       }
 
+      wxArrayString uname_output;
+      wxString arch_str = "Unknown";
+      if (wxExecute("uname -m", uname_output) == 0 && !uname_output.IsEmpty()) {
+          if (uname_output[0] == "x86_64") {
+              arch_str = "64-bit";
+          } else if (uname_output[0].Contains("386") || uname_output[0].Contains("i686")) {
+              arch_str = "32-bit";
+          } else {
+              arch_str = uname_output[0];
+          }
+      }
+
       info.emplace_back("Manufacturer", vendor_id);
       info.emplace_back("Model", model_name);
-      info.emplace_back("Architecture", cpu_family + "-bit");
+      info.emplace_back("Architecture", arch_str);
       info.emplace_back("Number of Cores", std::to_string(m_numCores));
 
       return info;

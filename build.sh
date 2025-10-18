@@ -4,9 +4,12 @@
 set -e
 
 # --- Configuration ---
-BUILD_DIR="build"
-INSTALL_DIR="bin" # The user requested building the app into the bin directory
-EXECUTABLE_NAME="SysInfoViewer" # From CMakeLists.txt
+echo "Wanjman build script"
+echo "App version 0.2.0"
+
+BUILD_DIR="AppDir"
+INSTALL_DIR="AppDir" # The user requested building the app into the bin directory
+EXECUTABLE_NAME="sysinfoviewer" # From CMakeLists.txt
 
 # --- Functions ---
 log_info() {
@@ -50,7 +53,7 @@ cmake --build "$BUILD_DIR" || log_error "Project build failed."
 
 # 5. Install the project
 log_info "Installing the project to ${INSTALL_DIR}..."
-cmake --install "$BUILD_DIR" || log_error "Project installation failed."
+cmake --install "$BUILD_DIR" --prefix "$INSTALL_DIR" || log_error "Project installation failed."
 
 log_info "Build and installation completed successfully!"
 log_info "Executable can be found at: $(pwd)/${INSTALL_DIR}/bin/${EXECUTABLE_NAME}"
