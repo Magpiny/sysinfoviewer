@@ -4,6 +4,7 @@
 bin
 build
 commitmssg.txt
+flatpak/commitsha.txt
 .cache/*
 
 # Ignore all files and subdirectories within the build directory

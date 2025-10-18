@@ -100,12 +100,15 @@ modules:
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DCMAKE_INSTALL_PREFIX=/app
+      - -DCMAKE_CXX_STANDARD=23
+      - -DCMAKE_CXX_STANDARD_REQUIRED=ON
+      - -DCMAKE_CXX_EXTENSIONS=OFF
     sources:
       # Use git source for Flathub submission
       - type: git
         url: https://github.com/Magpiny/SysInfoViewer.git
-        tag: v0.2.0
-        commit: fc361f12dba292e4065a54e2a96b30abb9761583
+        tag: v0.1.0-1
+        commit: 277d272ba9f8a122df032da6e9048dc34db34ad0
         x-checker-data:
           type: git
           tag-pattern: ^v([\d.]+)$
