@@ -7,6 +7,8 @@ commitmssg.txt
 commitsha.txt
 flatpak/commitsha.txt
 .cache/*
+arch-bin
+AppDir
 
 # Ignore all files and subdirectories within the build directory
 /build/**/*
