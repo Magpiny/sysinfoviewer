@@ -83,8 +83,8 @@ CMAKE_EXPORT_COMPILE_COMMANDS:BOOL=
 //Value Computed by CMake.
 CMAKE_FIND_PACKAGE_REDIRECTS_DIR:STATIC=/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/AppDir/CMakeFiles/pkgRedirects
 
-//Install path prefix
-CMAKE_INSTALL_PREFIX:PATH=/usr
+//Install path prefix, prepended onto install directories.
+CMAKE_INSTALL_PREFIX:PATH=/home/wanjares/Documents/Devs/cpp/proj/sysinfoviewer/AppDir
 
 //Path to a program.
 CMAKE_LINKER:FILEPATH=/usr/bin/ld

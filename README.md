@@ -2,6 +2,10 @@
 
 SysInfoViewer is a C++ application that provides detailed system information for Linux systems. It offers a user-friendly graphical interface to display various system metrics, including CPU usage, memory usage, disk usage, battery information, and process details.
 
+![Main Window](screenshots/main_window.png)
+![CPU Info](screenshots/cpu_info.png)
+![Installed Apps](screenshots/installed_apps.png)
+
 ## Features
 
 - System Information Overview

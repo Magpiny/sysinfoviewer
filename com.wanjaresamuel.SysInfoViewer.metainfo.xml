@@ -38,14 +38,15 @@
 
   <screenshots>
     <screenshot type="default">
-      <image
-            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/main_window.png</image>
+      <image>
+      https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/main_window.png</image>
       <caption>Main window showing system information</caption>
     </screenshot>
     <!-- Add more screenshots as needed -->
     <screenshot>
       <image
-            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/cpu_info.png</image>
+            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/cpu_info.png
+      </image>
       <caption>Detailed CPU information</caption>
     </screenshot>
     <screenshot>
