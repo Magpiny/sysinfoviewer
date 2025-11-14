@@ -8,7 +8,16 @@ commitsha.txt
 flatpak/commitsha.txt
 .cache/*
 arch-bin
+AppDir/*
 AppDir
+
+PKGBUILD/pkg
+PKGBUILD/src
+PKGBUILD/*.pkg.tar.zst
+PKGBUILD/*.tar.gz
+
+build-dir
+cmake/
 
 # Ignore all files and subdirectories within the build directory
 /build/**/*

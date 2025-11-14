@@ -1,5 +1,12 @@
 /*
- *@Author: Wanjare Samuel
+ * System Info Viewer
+ * Copyright (c) 2024 Wanjare Samuel
+ *
+ * This software is licensed under the MIT License.
+ * See the LICENSE file in the project root for full license text.
+ */
+
+/*
  * @APPNAME: SysInfoViewer
  * PROGRAM: System Information Viewer
  * DESCRIPTION: View Information About your system with ease
@@ -96,7 +103,6 @@
 #include <cstdio>
 #include <cstdlib>
 
-// #include <memory>
 #include <stdexcept>
 #include <wx/wrapsizer.h>
 
@@ -2315,13 +2321,6 @@ MyApp::OnInit()
         AddInfoFromFile(info, dmiPath / "bios_version", "BIOS Version");
         AddInfoFromFile(info, dmiPath / "bios_date", "BIOS Date");
       }
-
-      // // Add CPU information
-      // AddInfoFromCommand(info, "lscpu | grep 'Model name'", "CPU");
-
-      // // Add RAM information
-      // AddInfoFromCommand(info, "free -h | awk '/^Mem:/ {print $2}'",
-      //                    "Total RAM");
 
       return info;
     }

@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <!-- Copyright 2025 Wanjare Samuel -->
 <component type="desktop-application">
-  <id>com.wanjaresamuel.SysInfoViewer</id>
+  <id>com.github.Magpiny.SysInfoViewer</id>
 
   <name>System Info Viewer</name>
-  <summary>View detailed system information</summary>
+  <summary>View detailed system information hustle free</summary>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
@@ -34,19 +34,18 @@
 
   <launchable
         type="desktop-id"
-    >com.wanjaresamuel.SysInfoViewer.desktop</launchable>
+    >com.github.Magpiny.sysinfoviewer.desktop</launchable>
 
   <screenshots>
     <screenshot type="default">
-      <image>
-      https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/main_window.png</image>
+      <image
+            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/main_window.png</image>
       <caption>Main window showing system information</caption>
     </screenshot>
     <!-- Add more screenshots as needed -->
     <screenshot>
       <image
-            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/cpu_info.png
-      </image>
+            >https://raw.githubusercontent.com/Magpiny/SysInfoViewer/main/screenshots/cpu_info.png</image>
       <caption>Detailed CPU information</caption>
     </screenshot>
     <screenshot>
