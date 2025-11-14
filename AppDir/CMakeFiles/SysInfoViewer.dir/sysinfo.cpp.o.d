@@ -490,84 +490,51 @@ CMakeFiles/SysInfoViewer.dir/sysinfo.cpp.o: \
  /usr/local/include/wx-3.2/wx/txtstrm.h /usr/include/sys/sysinfo.h \
  /usr/include/linux/kernel.h /usr/include/linux/sysinfo.h \
  /usr/include/linux/const.h /usr/local/include/wx-3.2/wx/graphics.h \
- /usr/include/c++/15.2.1/chrono /usr/include/c++/15.2.1/bits/chrono.h \
- /usr/include/c++/15.2.1/ratio \
- /usr/include/c++/15.2.1/bits/parse_numbers.h \
- /usr/include/c++/15.2.1/sstream /usr/include/c++/15.2.1/bits/sstream.tcc \
- /usr/include/c++/15.2.1/bits/shared_ptr.h \
- /usr/include/c++/15.2.1/bits/shared_ptr_base.h \
- /usr/include/c++/15.2.1/bits/unique_ptr.h \
- /usr/include/c++/15.2.1/ext/concurrence.h \
- /usr/include/c++/15.2.1/bits/align.h \
- /usr/include/c++/15.2.1/bits/chrono_io.h /usr/include/c++/15.2.1/iomanip \
- /usr/include/c++/15.2.1/bits/quoted_string.h \
  /usr/include/c++/15.2.1/fstream \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/basic_file.h \
  /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/c++io.h \
  /usr/include/c++/15.2.1/bits/fstream.tcc /usr/include/sys/statvfs.h \
- /usr/include/bits/statvfs.h /usr/include/c++/15.2.1/thread \
- /usr/include/c++/15.2.1/stop_token /usr/include/c++/15.2.1/atomic \
- /usr/include/c++/15.2.1/bits/atomic_base.h \
- /usr/include/c++/15.2.1/bits/atomic_lockfree_defines.h \
- /usr/include/c++/15.2.1/bits/atomic_wait.h \
- /usr/include/c++/15.2.1/climits /usr/include/syscall.h \
- /usr/include/sys/syscall.h /usr/include/asm/unistd.h \
- /usr/include/asm/unistd_64.h /usr/include/bits/syscall.h \
- /usr/include/c++/15.2.1/bits/std_mutex.h \
- /usr/include/c++/15.2.1/bits/std_thread.h \
- /usr/include/c++/15.2.1/semaphore \
- /usr/include/c++/15.2.1/bits/semaphore_base.h \
- /usr/include/c++/15.2.1/bits/atomic_timed_wait.h \
- /usr/include/c++/15.2.1/bits/this_thread_sleep.h /usr/include/sys/time.h \
- /usr/include/semaphore.h /usr/include/bits/semaphore.h \
- /usr/local/include/wx-3.2/wx/dcbuffer.h \
+ /usr/include/bits/statvfs.h /usr/local/include/wx-3.2/wx/dcbuffer.h \
+ /usr/include/arpa/inet.h /usr/include/netinet/in.h \
+ /usr/include/sys/socket.h /usr/include/bits/socket.h \
+ /usr/include/bits/socket_type.h /usr/include/bits/sockaddr.h \
+ /usr/include/asm/socket.h /usr/include/asm-generic/socket.h \
+ /usr/include/asm/sockios.h /usr/include/asm-generic/sockios.h \
+ /usr/include/bits/types/struct_osockaddr.h /usr/include/bits/in.h \
  /usr/local/include/wx-3.2/wx/dir.h \
  /usr/local/include/wx-3.2/wx/stc/stc.h \
  /usr/local/include/wx-3.2/wx/dnd.h \
  /usr/local/include/wx-3.2/wx/gtk/dnd.h \
  /usr/local/include/wx-3.2/wx/textfile.h \
  /usr/local/include/wx-3.2/wx/textbuf.h \
- /usr/local/include/wx-3.2/wx/tokenzr.h /usr/include/arpa/inet.h \
- /usr/include/netinet/in.h /usr/include/sys/socket.h \
- /usr/include/bits/socket.h /usr/include/bits/socket_type.h \
- /usr/include/bits/sockaddr.h /usr/include/asm/socket.h \
- /usr/include/asm-generic/socket.h /usr/include/asm/sockios.h \
- /usr/include/asm-generic/sockios.h \
- /usr/include/bits/types/struct_osockaddr.h /usr/include/bits/in.h \
- /usr/include/c++/15.2.1/cstring /usr/include/curl/curl.h \
- /usr/include/curl/curlver.h /usr/include/curl/system.h \
+ /usr/local/include/wx-3.2/wx/tokenzr.h /usr/include/c++/15.2.1/cstring \
+ /usr/include/curl/curl.h /usr/include/curl/curlver.h \
+ /usr/include/curl/system.h /usr/include/sys/time.h \
  /usr/include/curl/easy.h /usr/include/curl/multi.h \
  /usr/include/curl/curl.h /usr/include/curl/urlapi.h \
  /usr/include/curl/options.h /usr/include/curl/header.h \
  /usr/include/curl/websockets.h /usr/include/curl/mprintf.h \
  /usr/include/c++/15.2.1/filesystem /usr/include/c++/15.2.1/bits/fs_fwd.h \
- /usr/include/c++/15.2.1/bits/fs_path.h /usr/include/c++/15.2.1/codecvt \
+ /usr/include/c++/15.2.1/bits/chrono.h /usr/include/c++/15.2.1/ratio \
+ /usr/include/c++/15.2.1/bits/parse_numbers.h \
+ /usr/include/c++/15.2.1/bits/fs_path.h /usr/include/c++/15.2.1/iomanip \
+ /usr/include/c++/15.2.1/bits/quoted_string.h \
+ /usr/include/c++/15.2.1/sstream /usr/include/c++/15.2.1/bits/sstream.tcc \
+ /usr/include/c++/15.2.1/codecvt \
+ /usr/include/c++/15.2.1/ext/concurrence.h \
+ /usr/include/c++/15.2.1/bits/shared_ptr.h \
+ /usr/include/c++/15.2.1/bits/shared_ptr_base.h \
+ /usr/include/c++/15.2.1/bits/unique_ptr.h \
+ /usr/include/c++/15.2.1/bits/align.h \
  /usr/include/c++/15.2.1/bits/fs_dir.h \
  /usr/include/c++/15.2.1/bits/fs_ops.h /usr/include/ifaddrs.h \
  /usr/include/linux/if_link.h /usr/include/linux/netlink.h \
  /usr/include/linux/socket.h /usr/include/linux/if_packet.h \
  /usr/include/asm/byteorder.h \
  /usr/include/linux/byteorder/little_endian.h /usr/include/linux/swab.h \
- /usr/include/asm/swab.h /usr/include/c++/15.2.1/map \
- /usr/include/c++/15.2.1/bits/stl_tree.h \
- /usr/include/c++/15.2.1/bits/stl_map.h \
- /usr/include/c++/15.2.1/bits/stl_multimap.h \
- /usr/include/c++/15.2.1/memory \
- /usr/include/c++/15.2.1/bits/stl_raw_storage_iter.h \
- /usr/include/c++/15.2.1/bits/shared_ptr_atomic.h \
- /usr/include/c++/15.2.1/backward/auto_ptr.h \
- /usr/include/c++/15.2.1/bits/ranges_uninitialized.h \
- /usr/include/c++/15.2.1/bits/out_ptr.h \
- /usr/include/c++/15.2.1/pstl/glue_memory_defs.h \
- /usr/include/c++/15.2.1/mutex /usr/include/c++/15.2.1/bits/unique_lock.h \
- /usr/include/net/if.h /usr/include/netdb.h /usr/include/rpc/netdb.h \
- /usr/include/bits/netdb.h /usr/include/poll.h /usr/include/sys/poll.h \
- /usr/include/bits/poll.h /usr/include/c++/15.2.1/random \
- /usr/include/c++/15.2.1/bits/random.h \
- /usr/include/c++/15.2.1/x86_64-pc-linux-gnu/bits/opt_random.h \
- /usr/include/c++/15.2.1/bits/random.tcc /usr/include/c++/15.2.1/numeric \
- /usr/include/c++/15.2.1/bits/stl_numeric.h \
- /usr/include/c++/15.2.1/pstl/glue_numeric_defs.h /usr/include/resolv.h \
+ /usr/include/asm/swab.h /usr/include/net/if.h /usr/include/netdb.h \
+ /usr/include/rpc/netdb.h /usr/include/bits/netdb.h /usr/include/poll.h \
+ /usr/include/sys/poll.h /usr/include/bits/poll.h /usr/include/resolv.h \
  /usr/include/sys/param.h /usr/include/bits/param.h \
  /usr/include/linux/param.h /usr/include/asm/param.h \
  /usr/include/asm-generic/param.h /usr/include/arpa/nameser.h \
@@ -593,22 +560,4 @@ CMakeFiles/SysInfoViewer.dir/sysinfo.cpp.o: \
  /usr/include/libdrm/drm.h /usr/include/xf86drmMode.h \
  /usr/include/libdrm/drm_mode.h \
  /usr/lib/gcc/x86_64-pc-linux-gnu/15.2.1/include/stdbool.h \
- /usr/local/include/wx-3.2/wx/wrapsizer.h /usr/include/c++/15.2.1/regex \
- /usr/include/c++/15.2.1/bitset /usr/include/c++/15.2.1/stack \
- /usr/include/c++/15.2.1/deque /usr/include/c++/15.2.1/bits/stl_deque.h \
- /usr/include/c++/15.2.1/bits/deque.tcc \
- /usr/include/c++/15.2.1/bits/stl_stack.h /usr/include/c++/15.2.1/ranges \
- /usr/include/c++/15.2.1/variant \
- /usr/include/c++/15.2.1/bits/elements_of.h \
- /usr/include/c++/15.2.1/bits/regex_constants.h \
- /usr/include/c++/15.2.1/bits/regex_error.h \
- /usr/include/c++/15.2.1/bits/regex_automaton.h \
- /usr/include/c++/15.2.1/bits/regex_automaton.tcc \
- /usr/include/c++/15.2.1/bits/regex_scanner.h \
- /usr/include/c++/15.2.1/bits/regex_scanner.tcc \
- /usr/include/c++/15.2.1/bits/regex_compiler.h \
- /usr/include/c++/15.2.1/bits/regex_compiler.tcc \
- /usr/include/c++/15.2.1/bits/regex.h \
- /usr/include/c++/15.2.1/bits/regex.tcc \
- /usr/include/c++/15.2.1/bits/regex_executor.h \
- /usr/include/c++/15.2.1/bits/regex_executor.tcc
+ /usr/local/include/wx-3.2/wx/wrapsizer.h
