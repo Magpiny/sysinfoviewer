@@ -77,8 +77,8 @@ set(DESKTOP_FILE "${CMAKE_CURRENT_BINARY_DIR}/${PROJECT_NAME}.desktop")
 file(WRITE ${DESKTOP_FILE}
 "[Desktop Entry]
 Name=System Info Viewer
-Comment=View system information
-Exec=SysInfoViewer
+Comment=Monitor System Resources
+Exec=sysinfoviewer
 Icon=sysinfoviewer
 Terminal=false
 Type=Application
