@@ -13,7 +13,7 @@ optdepends=(
   'smartmontools: Disk health information'
 )
 source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Magpiny/${pkgname}/archive/v${pkgver}.tar.gz")
-sha256sums=('SKIP')  # Generate with: makepkg -g
+sha256sums=('c1e1d5b853a5c03332f8633ec21578cbed61b40ef13c5011cc62fed3f2765a8e')
 
 # Optimization flags for production builds
 export CFLAGS="-march=x86-64 -mtune=generic -O3 -pipe -fno-plt -fexceptions \
