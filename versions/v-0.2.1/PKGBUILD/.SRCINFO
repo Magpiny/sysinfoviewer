@@ -1,0 +1,16 @@
+pkgbase = sysinfoviewer
+	pkgdesc = A comprehensive system information viewer built with wxWidgets
+	pkgver = 0.2.0
+	pkgrel = 1
+	url = https://github.com/Magpiny/sysinfoviewer
+	arch = x86_64
+	license = MIT
+	makedepends = cmake
+	makedepends = gcc
+	depends = wxwidgets-gtk3
+	depends = curl
+	depends = alsa-lib
+	source = sysinfoviewer-0.2.0.tar.gz::https://github.com/Magpiny/sysinfoviewer/archive/v0.2.0.tar.gz
+	sha256sums = SKIP
+
+pkgname = sysinfoviewer

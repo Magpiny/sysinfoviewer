@@ -1,0 +1,35 @@
+# Maintainer: Your Name <youremail@example.com>
+pkgname=sysinfoviewer
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="A comprehensive system information viewer built with wxWidgets"
+arch=('x86_64')
+url="https://github.com/Magpiny/sysinfoviewer"
+license=('MIT')  # Verify this matches your actual license
+depends=('wxwidgets-gtk3' 'curl' 'alsa-lib')
+makedepends=('cmake' 'gcc')
+source=("${pkgname}-${pkgver}.tar.gz::https://github.com/Magpiny/sysinfoviewer/archive/v${pkgver}.tar.gz")
+sha256sums=('f2b709879e6c96c27bd97eea9c79b38bbc2a341cf122c80a3fad911c719e3ce4')
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  cmake -B build \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DCMAKE_INSTALL_LIBDIR=lib
+  
+  cmake --build build
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  
+  DESTDIR="${pkgdir}" cmake --install build
+  
+  # Install license if available
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  
+  # Install documentation if available
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+}

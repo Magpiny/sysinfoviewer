@@ -1,0 +1,110 @@
+# Ignore the build directory
+/build/
+/bin/
+bin
+build
+commitmssg.txt
+commitsha.txt
+flatpak/commitsha.txt
+.cache/*
+arch-bin
+AppDir/*
+AppDir
+
+PKGBUILD/pkg
+PKGBUILD/src
+PKGBUILD/*.pkg.tar.zst
+PKGBUILD/*.tar.gz
+
+build-dir
+cmake/
+
+# Ignore all files and subdirectories within the build directory
+/build/**/*
+/bin/**/*
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps
+
+# IDE-specific files
+## Visual Studio
+.vs/
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.suo
+*.user
+*.userosscache
+*.sdf
+*.opensdf
+*.VC.db
+*.VC.VC.opendb
+
+## Visual Studio Code
+.vscode/
+
+## CLion
+.idea/
+cmake-build-*/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# AppImage
+*.AppImage
+
+# Logs
+*.log
