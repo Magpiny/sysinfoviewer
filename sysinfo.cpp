@@ -2636,7 +2636,7 @@ bool MyApp::OnInit() {
   return true;
 }
 
-MyFrame::MyFrame() : wxFrame(nullptr, wxID_ANY, "Sytem Information") {
+MyFrame::MyFrame() : wxFrame(nullptr, wxID_ANY, "Sytem Information Monitor") {
 
   wxMenu *menuFile = new wxMenu;
   menuFile->Append(ID_Hello, "&Hello...\tCtrl-I",
@@ -2654,7 +2654,7 @@ MyFrame::MyFrame() : wxFrame(nullptr, wxID_ANY, "Sytem Information") {
   SetMenuBar(menuBar);
 
   CreateStatusBar();
-  SetStatusText("Built by Wanjare using C++ ");
+  SetStatusText("Built by Magpiny using C++ ");
 
   Bind(wxEVT_MENU, &MyFrame::OnHello, this, ID_Hello);
   Bind(wxEVT_MENU, &MyFrame::OnAbout, this, wxID_ABOUT);
@@ -2678,17 +2678,17 @@ MyFrame::MyFrame() : wxFrame(nullptr, wxID_ANY, "Sytem Information") {
 void MyFrame::OnExit(wxCommandEvent &event) { Close(true); };
 
 void MyFrame::OnAbout(wxCommandEvent &event) {
-  wxMessageBox("Developer: Wanjare Samuel\nDate: Friday 7th May 2024\nWritten "
-               "in C++\nView Your system Info hassle free",
-               "About System Info", wxOK | wxICON_INFORMATION);
+  wxMessageBox(
+      "Developer: Wanjare Samuel\nDate: Friday 7th May 2024\nWritten "
+      "in C++\nView Your system Info hassle free \nApp Version: 0.2.3-beta",
+      "About System Info", wxOK | wxICON_INFORMATION);
 };
 
 void MyFrame::OnHello(wxCommandEvent &event) {
   wxString osDesc = wxPlatformInfo::Get().GetOperatingSystemDescription();
   wxString userName = wxGetUserName();
   wxString currentTime = wxNow();
-  wxString title =
-      wxString::Format("Hello %s", userName); // Concatenation instead of Format
+  wxString title = wxString::Format("Hello %s", userName);
 
   wxMessageBox(wxString::Format("User: %s\nDate: %s \nOS: %s", userName,
                                 currentTime, osDesc),

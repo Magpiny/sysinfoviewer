@@ -6,7 +6,7 @@ set -e
 # --- Configuration ---
 BUILD_DIR="build_local"
 APP_DIR="app"
-EXECUTABLE_NAME="SysInfoViewer"
+EXECUTABLE_NAME="sysvnfoviewer"
 
 # --- Functions ---
 log_info() {
@@ -20,6 +20,12 @@ log_error() {
 
 # --- Main Script ---
 
+log_info "SystemInfoViewer: Is a system monitoring tool"
+log_info "AUTHOR: Magpiny BO"
+log_info "..........................................................."
+log_info " "
+log_info "Version: 0.2.3"
+log_info "$(date +%d/%m/%Y_%H:%M:%S)"
 log_info "Starting script to create local app in '${APP_DIR}'..."
 
 # 1. Clean previous build and app directories

@@ -5,7 +5,7 @@ set -e
 
 # --- Configuration ---
 echo "Wanjman build script"
-echo "App version 0.2.1"
+echo "App version 0.2.3"
 
 BUILD_DIR="AppDir"
 INSTALL_DIR="AppDir"
@@ -125,3 +125,4 @@ log_info "Build and installation completed successfully!"
 log_info "Build type: ${BUILD_TYPE}"
 log_info "Executable can be found at: $(pwd)/${INSTALL_DIR}/bin/${EXECUTABLE_NAME}"
 log_info "You can run it using: ./${INSTALL_DIR}/bin/${EXECUTABLE_NAME}"
+log_info "$(date +%d/%m/%Y_%H:%M:%S)"
