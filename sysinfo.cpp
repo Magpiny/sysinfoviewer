@@ -209,15 +209,22 @@ bool MyApp::OnInit() {
       Refresh();
     }
 
+    // Get CPU Information
     void GetCPUInfo() {
       std::ifstream cpuinfo("/proc/cpuinfo");
       std::string line;
-      int count = 0;
+      int threadCount = 0;
+      int coresPerPackage = 0;
       double speed = 0.0;
 
       while (std::getline(cpuinfo, line)) {
         if (line.substr(0, 9) == "processor") {
-          count++;
+          threadCount++;
+        } else if (line.substr(0, 9) == "cpu cores") {
+          size_t pos = line.find(':');
+          if (pos != std::string::npos) {
+            coresPerPackage = std::stoi(line.substr(pos + 1));
+          }
         } else if (line.substr(0, 7) == "cpu MHz") {
           size_t pos = line.find(':');
           if (pos != std::string::npos) {
@@ -226,7 +233,12 @@ bool MyApp::OnInit() {
         }
       }
 
-      m_cpuCount = count;
+      m_cpuThreads = threadCount;
+      // coresPerPackage is per physical CPU; for single-socket this equals
+      // total cores
+      m_cpuCores = (coresPerPackage > 0) ? coresPerPackage : threadCount;
+      m_cpuCount =
+          threadCount; // keep m_cpuCount as threads for backward compat
       m_cpuSpeed = speed;
     }
 
@@ -300,8 +312,9 @@ bool MyApp::OnInit() {
                    centerY - textHeight / 2);
 
       // Add CPU info below the chart
-      wxString cpuInfo = wxString::Format("CPU Count: %d | CPU Speed: %.2f MHz",
-                                          m_cpuCount, m_cpuSpeed);
+      wxString cpuInfo =
+          wxString::Format("Cores: %d | Threads: %d | Speed: %.0f MHz",
+                           m_cpuCores, m_cpuThreads, m_cpuSpeed);
       gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
                          wxFONTWEIGHT_NORMAL),
                   wxColor(80, 80, 80));
@@ -311,7 +324,9 @@ bool MyApp::OnInit() {
 
     wxTimer m_timer;
     double m_cpuUsage;
-    int m_cpuCount;
+    int m_cpuCount;   // logical processors / threads
+    int m_cpuCores;   // physical cores
+    int m_cpuThreads; // same as m_cpuCount, explicit alias
     double m_cpuSpeed;
     unsigned long long m_user, m_nice, m_system, m_idle;
     unsigned long long m_prevTotal = 0, m_prevTotalUsage = 0;
@@ -539,18 +554,7 @@ bool MyApp::OnInit() {
       gc->FillPath(freePath);
       gc->StrokePath(freePath);
 
-      // Add labels
-      gc->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
-                         wxFONTWEIGHT_BOLD),
-                  wxColor(164, 42, 42));
-
-      DrawLabel(gc, "Total: " + FormatSize(m_totalSpace), centerX, height - 40);
-      DrawLabel(gc, "Used: " + FormatSize(m_usedSpace), centerX - radius,
-                height - 40);
-      DrawLabel(gc, "Free: " + FormatSize(m_freeSpace), centerX + radius,
-                height - 40);
-
-      // Add percentage in the center
+      // Add labels: percentage at the center
       wxString percentageText =
           wxString::Format("%.1f%%", (double)m_usedSpace / m_totalSpace * 100);
       gc->SetFont(wxFont(20, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
@@ -560,6 +564,49 @@ bool MyApp::OnInit() {
       gc->GetTextExtent(percentageText, &textWidth, &textHeight);
       gc->DrawText(percentageText, centerX - textWidth / 2,
                    centerY - textHeight / 2);
+
+      // Horizontal labels below the chart
+      struct LabelEntry {
+        wxString text;
+        wxColor color;
+      };
+      LabelEntry labels[] = {
+          {"Total: " + FormatSize(m_totalSpace), wxColor(80, 80, 80)},
+          {"Used: " + FormatSize(m_usedSpace), wxColor(200, 60, 60)},
+          {"Free: " + FormatSize(m_freeSpace), wxColor(80, 130, 80)},
+      };
+
+      gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                         wxFONTWEIGHT_BOLD),
+                  wxColor(80, 80, 80));
+
+      // Measure all three so we can centre the group
+      double totalLabelWidth = 0, labelH = 0;
+      const double padding = 20; // gap between labels
+      double widths[3] = {};
+      for (int i = 0; i < 3; i++) {
+        gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                           wxFONTWEIGHT_BOLD),
+                    labels[i].color);
+        double tw, th;
+        gc->GetTextExtent(labels[i].text, &tw, &th);
+        widths[i] = tw;
+        totalLabelWidth += tw;
+        if (th > labelH)
+          labelH = th;
+      }
+      totalLabelWidth += padding * 2; // two gaps between three labels
+
+      double labelY = centerY + radius + 12;
+      double startX = centerX - totalLabelWidth / 2;
+
+      for (int i = 0; i < 3; i++) {
+        gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                           wxFONTWEIGHT_BOLD),
+                    labels[i].color);
+        gc->DrawText(labels[i].text, startX, labelY);
+        startX += widths[i] + padding;
+      }
     }
 
     void DrawLabel(wxGraphicsContext *gc, const wxString &text, double x,
@@ -670,16 +717,12 @@ bool MyApp::OnInit() {
     BatteryInfoPanel(wxPanel *parent) : wxPanel(parent) {
       SetBackgroundStyle(wxBG_STYLE_PAINT);
       Bind(wxEVT_PAINT, &BatteryInfoPanel::OnPaint, this);
-
       m_timer = new wxTimer(this);
       Bind(wxEVT_TIMER, &BatteryInfoPanel::OnTimer, this);
-      m_timer->Start(5000); // Update every 5 seconds
-
-      FindBatteries();
+      m_timer->Start(5000);
+      FindBattery();
       UpdateBatteryInfo();
-
-      // Set minimum size to prevent layout issues
-      SetMinSize(wxSize(450, 350));
+      SetMinSize(wxSize(500, 400));
     }
 
     ~BatteryInfoPanel() {
@@ -690,209 +733,315 @@ bool MyApp::OnInit() {
     }
 
   private:
-    std::vector<wxString> m_batteryPaths;
-    wxString m_powerSupplyType = "Unknown";
-    int m_batteryPercentage = 0;
-    wxString m_batteryState = "Unknown";
-    wxString m_batteryInfo = "No battery information available";
+    wxString m_batteryPath;
     wxTimer *m_timer = nullptr;
 
-    double m_powerNow = 0.0;
+    // --- parsed fields ---
+    int m_percentage = 0;
+    double m_energyNow = 0.0;        // Wh
+    double m_energyFull = 0.0;       // Wh
+    double m_energyFullDesign = 0.0; // Wh
+    double m_energyRate = 0.0;       // W  (power draw / charge rate)
+    double m_voltage = 0.0;          // V
+    double m_voltageMinDesign = 0.0; // V
+    int m_cycleCnt = 0;
+    int m_healthPct = 100;
+    wxString m_state = "Unknown";
     wxString m_technology = "Unknown";
-    int m_temperature = 0;
-    int m_fullCapacity = 0;
-    wxString m_timeToFullOrEmpty = "N/A";
-    int m_cycleCount = 0;
-    int m_batteryHealth = 100;
+    wxString m_capacityLevel = "Unknown";
+    wxString m_warningLevel = "none";
+    wxString m_vendor = "Unknown";
+    wxString m_model = "Unknown";
+    wxString m_serial = "Unknown";
+    wxString m_timeRemaining = "N/A";
+    bool m_hasBattery = false;
 
-    wxString ReadFileContent(const wxString &path) {
-      wxString content;
-      wxTextFile file(path);
-      if (file.Open()) {
-        content = file.GetFirstLine();
-        file.Close();
+    // ------------------------------------------------------------------ //
+    wxString ReadFile(const wxString &path) {
+      wxTextFile f(path);
+      if (f.Open()) {
+        wxString s = f.GetFirstLine().Trim();
+        f.Close();
+        return s;
       }
-      return content;
+      return wxEmptyString;
     }
 
-    void FindBatteries() {
-      m_batteryPaths.clear();
-      wxString bat0_path = "/sys/class/power_supply/BAT0/";
+    // Convert µWh  →  Wh   (sysfs stores energy in µWh)
+    double ToWh(const wxString &raw) {
+      double v = 0.0;
+      raw.ToDouble(&v);
+      return v / 1e6;
+    }
 
-      if (wxDir::Exists(bat0_path)) {
-        wxLogMessage("BAT0 directory found: %s", bat0_path);
+    // Convert µV  →  V
+    double ToV(const wxString &raw) {
+      double v = 0.0;
+      raw.ToDouble(&v);
+      return v / 1e6;
+    }
 
-        wxString typeContent = ReadFileContent(bat0_path + "type");
-        if (typeContent.Trim() == "Battery") {
-          wxLogMessage("Valid battery found in BAT0");
-          m_batteryPaths.push_back(bat0_path);
-        } else {
-          wxLogWarning("BAT0 exists but type file doesn't contain 'Battery'. "
-                       "Content: %s",
-                       typeContent);
+    // Convert µW  →  W
+    double ToW(const wxString &raw) {
+      double v = 0.0;
+      raw.ToDouble(&v);
+      return v / 1e6;
+    }
+
+    // ------------------------------------------------------------------ //
+    void FindBattery() {
+      m_hasBattery = false;
+      const wxString base = "/sys/class/power_supply/";
+      wxArrayString candidates;
+      candidates.Add("BAT0");
+      candidates.Add("BAT1");
+      candidates.Add("battery");
+      candidates.Add("BATT");
+
+      for (const auto &name : candidates) {
+        wxString path = base + name + "/";
+        if (wxDir::Exists(path) &&
+            ReadFile(path + "type").IsSameAs("Battery", false)) {
+          m_batteryPath = path;
+          m_hasBattery = true;
+          return;
         }
-      } else {
-        wxLogError("BAT0 directory not found at: %s", bat0_path);
-      }
-
-      if (m_batteryPaths.empty()) {
-        wxLogWarning("No battery found in power supply directory");
-      } else {
-        wxLogMessage("Found %zu batteries", m_batteryPaths.size());
       }
     }
 
+    // ------------------------------------------------------------------ //
     void UpdateBatteryInfo() {
-      if (!m_batteryPaths.empty()) {
-        wxString batteryPath =
-            m_batteryPaths[0]; // Use the first (and only) battery found
+      if (!m_hasBattery)
+        return;
+      const wxString &p = m_batteryPath;
 
-        m_powerSupplyType = ReadFileContent(batteryPath + "type").Trim();
-        m_batteryState = ReadFileContent(batteryPath + "status").Trim();
+      // --- state & percentage ---
+      m_state = ReadFile(p + "status");
+      m_technology = ReadFile(p + "technology");
+      m_capacityLevel = ReadFile(p + "capacity_level");
+      m_warningLevel = ReadFile(p + "alarm"); // not always present
+      ReadFile(p + "capacity").ToInt(&m_percentage);
 
-        wxString capacityStr = ReadFileContent(batteryPath + "capacity").Trim();
-        if (!capacityStr.ToInt(&m_batteryPercentage)) {
-          m_batteryPercentage = 0;
-        }
+      // --- energy (µWh nodes preferred; fall back to charge_* µAh * voltage)
+      // ---
+      wxString eNow = ReadFile(p + "energy_now");
+      wxString eFull = ReadFile(p + "energy_full");
+      wxString eDesign = ReadFile(p + "energy_full_design");
 
-        wxString currentNowStr =
-            ReadFileContent(batteryPath + "current_now").Trim();
-        double currentNow;
-        if (currentNowStr.ToDouble(&currentNow)) {
-          m_powerNow =
-              currentNow /
-              1000000.0; // Convert to watts (assuming voltage is around 1V)
-        } else {
-          m_powerNow = 0.0;
-        }
-
-        m_technology = ReadFileContent(batteryPath + "technology").Trim();
-
-        wxString cycleCountStr =
-            ReadFileContent(batteryPath + "cycle_count").Trim();
-        if (!cycleCountStr.ToInt(&m_cycleCount)) {
-          m_cycleCount = 0;
-        }
-
-        wxString chargeFullStr =
-            ReadFileContent(batteryPath + "charge_full").Trim();
-        wxString chargeFullDesignStr =
-            ReadFileContent(batteryPath + "charge_full_design").Trim();
-        int chargeFull, chargeFullDesign;
-        if (chargeFullStr.ToInt(&chargeFull) &&
-            chargeFullDesignStr.ToInt(&chargeFullDesign) &&
-            chargeFullDesign > 0) {
-          m_batteryHealth = static_cast<int>(
-              (static_cast<double>(chargeFull) / chargeFullDesign) * 100);
-          m_fullCapacity = chargeFull / 1000; // Convert to mAh
-        } else {
-          m_batteryHealth = 100;
-          m_fullCapacity = 0;
-        }
-
-        // Calculate time to full/empty (simplified, might not be accurate)
-        wxString chargeNowStr =
-            ReadFileContent(batteryPath + "charge_now").Trim();
-        int chargeNow;
-        if (chargeNowStr.ToInt(&chargeNow) && m_powerNow > 0) {
-          double timeHours =
-              (m_batteryState == "Charging")
-                  ? (chargeFull - chargeNow) / (m_powerNow * 1000000.0)
-                  : chargeNow / (m_powerNow * 1000000.0);
-          int hours = static_cast<int>(timeHours);
-          int minutes = static_cast<int>((timeHours - hours) * 60);
-          m_timeToFullOrEmpty = wxString::Format("%d:%02d", hours, minutes);
-        } else {
-          m_timeToFullOrEmpty = "N/A";
-        }
-
-        m_batteryInfo = wxString::Format(
-            "Capacity: %d%%\n"
-            "Power: %.2f W\n"
-            "Technology: %s\n"
-            "Full Capacity: %d mAh\n"
-            "Time to %s: %s\n"
-            "Cycle Count: %d\n"
-            "Battery Health: %d%%",
-            m_batteryPercentage, m_powerNow, m_technology, m_fullCapacity,
-            (m_batteryState == "Charging" ? "Full" : "Empty"),
-            m_timeToFullOrEmpty, m_cycleCount, m_batteryHealth);
+      if (!eNow.IsEmpty()) {
+        m_energyNow = ToWh(eNow);
+        m_energyFull = ToWh(eFull);
+        m_energyFullDesign = ToWh(eDesign);
       } else {
-        m_powerSupplyType = "Unknown";
-        m_batteryPercentage = 0;
-        m_batteryState = "No battery found";
-        m_batteryInfo = "No battery information available";
+        // charge-based sysfs layout (µAh): convert using voltage
+        double vNow = ToV(ReadFile(p + "voltage_now"));
+        if (vNow == 0.0)
+          vNow = 11.1; // safe fallback
+        auto uAhToWh = [&](const wxString &raw) -> double {
+          double ua = 0.0;
+          raw.ToDouble(&ua);
+          return (ua / 1e6) * vNow;
+        };
+        m_energyNow = uAhToWh(ReadFile(p + "charge_now"));
+        m_energyFull = uAhToWh(ReadFile(p + "charge_full"));
+        m_energyFullDesign = uAhToWh(ReadFile(p + "charge_full_design"));
       }
+
+      // --- power rate ---
+      wxString pNow = ReadFile(p + "power_now");
+      if (!pNow.IsEmpty()) {
+        m_energyRate = ToW(pNow);
+      } else {
+        // current_now (µA) * voltage_now (µV) → W
+        double iua = 0.0, vuv = 0.0;
+        ReadFile(p + "current_now").ToDouble(&iua);
+        ReadFile(p + "voltage_now").ToDouble(&vuv);
+        m_energyRate = (iua / 1e6) * (vuv / 1e6);
+      }
+
+      // --- voltage ---
+      m_voltage = ToV(ReadFile(p + "voltage_now"));
+      m_voltageMinDesign = ToV(ReadFile(p + "voltage_min_design"));
+
+      // --- cycle count ---
+      ReadFile(p + "cycle_count").ToInt(&m_cycleCnt);
+
+      // --- health % ---
+      if (m_energyFullDesign > 0.0)
+        m_healthPct =
+            static_cast<int>(m_energyFull / m_energyFullDesign * 100.0);
+
+      // --- time remaining ---
+      m_timeRemaining = "N/A";
+      if (m_energyRate > 0.01) {
+        double hours = (m_state.IsSameAs("Charging", false))
+                           ? (m_energyFull - m_energyNow) / m_energyRate
+                           : m_energyNow / m_energyRate;
+        int h = static_cast<int>(hours);
+        int m = static_cast<int>((hours - h) * 60);
+        m_timeRemaining = wxString::Format("%d h %02d min", h, m);
+      }
+
+      // --- vendor / model / serial via upower (best-effort) ---
+      FetchUpowerMeta();
     }
 
-    wxColor GetBatteryColor() {
-      if (m_batteryPercentage > 85) {
-        return wxColor(0, 255, 0); // Green
-      } else if (m_batteryPercentage > 45) {
-        return wxColor(255, 165, 0); // Orange
-      } else {
-        return wxColor(255, 0, 0); // Red
-      }
+    // ------------------------------------------------------------------ //
+    // Run upower once to get vendor/model/serial — fields not in sysfs
+    void FetchUpowerMeta() {
+      wxArrayString out;
+      // Find the upower device path first
+      wxArrayString devs;
+      if (wxExecute("upower -e", devs, wxEXEC_SYNC) != 0 || devs.IsEmpty())
+        return;
+
+      wxString batDev;
+      for (const auto &d : devs)
+        if (d.Contains("BAT") || d.Contains("battery")) {
+          batDev = d;
+          break;
+        }
+      if (batDev.IsEmpty())
+        return;
+
+      if (wxExecute("upower -i " + batDev, out, wxEXEC_SYNC) != 0)
+        return;
+
+      auto extract = [&](const wxString &key) -> wxString {
+        for (const auto &line : out) {
+          int idx = line.Find(key);
+          if (idx != wxNOT_FOUND) {
+            wxString val = line.Mid(idx + key.Len()).Trim(false).Trim();
+            return val;
+          }
+        }
+        return "Unknown";
+      };
+
+      m_vendor = extract("vendor:");
+      m_model = extract("model:");
+      m_serial = extract("serial:");
+
+      // upower's time string is more accurate — prefer it
+      wxString upTime = extract("time to empty:");
+      if (upTime.IsEmpty() || upTime == "Unknown")
+        upTime = extract("time to full:");
+      if (!upTime.IsEmpty() && upTime != "Unknown")
+        m_timeRemaining = upTime;
     }
 
-    void OnPaint(wxPaintEvent &event) {
+    // ------------------------------------------------------------------ //
+    wxColor BatteryColor() const {
+      if (m_percentage > 85)
+        return wxColor(40, 180, 40);
+      if (m_percentage > 40)
+        return wxColor(255, 165, 0);
+      return wxColor(210, 40, 40);
+    }
+
+    // ------------------------------------------------------------------ //
+    void OnPaint(wxPaintEvent &) {
       wxAutoBufferedPaintDC dc(this);
       dc.Clear();
       wxGraphicsContext *gc = wxGraphicsContext::Create(dc);
-      if (gc) {
-        // Get the size of the panel
-        wxSize size = GetClientSize();
+      if (!gc)
+        return;
 
-        // Calculate the battery bar size and position
-        const int barWidth = 50;
-        const int barHeight = size.GetHeight() - 100;
-        const int barX = 50;
-        const int barY = 50;
+      wxSize sz = GetClientSize();
+      int W = sz.GetWidth();
+      int H = sz.GetHeight();
 
-        // Draw battery percentage bar
-        gc->SetBrush(*wxWHITE_BRUSH);
-        gc->SetPen(*wxBLACK_PEN);
-        gc->DrawRectangle(barX, barY, barWidth, barHeight);
+      // ── battery bar (left column) ──────────────────────────────────
+      const int barW = 40;
+      const int barH = H - 120;
+      const int barX = 30;
+      const int barY = 50;
+      const int tipH = 10;
+      const int tipW = 16;
 
-        wxColor batteryColor = GetBatteryColor();
-        gc->SetBrush(wxBrush(batteryColor));
-        int filledHeight =
-            static_cast<int>(barHeight * m_batteryPercentage / 100.0);
-        gc->DrawRectangle(barX, barY + barHeight - filledHeight, barWidth,
-                          filledHeight);
+      // tip nub
+      gc->SetBrush(wxBrush(wxColor(160, 160, 160)));
+      gc->SetPen(*wxTRANSPARENT_PEN);
+      gc->DrawRectangle(barX + (barW - tipW) / 2, barY - tipH, tipW, tipH);
 
-        // Draw percentage text
-        gc->SetFont(wxFont(12, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+      // outline
+      gc->SetBrush(*wxWHITE_BRUSH);
+      gc->SetPen(wxPen(wxColor(80, 80, 80), 2));
+      gc->DrawRoundedRectangle(barX, barY, barW, barH, 4);
+
+      // fill
+      int fillH = static_cast<int>(barH * m_percentage / 100.0);
+      gc->SetBrush(wxBrush(BatteryColor()));
+      gc->SetPen(*wxTRANSPARENT_PEN);
+      gc->DrawRoundedRectangle(barX, barY + barH - fillH, barW, fillH, 4);
+
+      // percentage text centred in bar
+      gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                         wxFONTWEIGHT_BOLD),
+                  *wxBLACK);
+      wxString pctStr = wxString::Format("%d%%", m_percentage);
+      double tw, th;
+      gc->GetTextExtent(pctStr, &tw, &th);
+      gc->DrawText(pctStr, barX + (barW - tw) / 2, barY + barH + 6);
+
+      // ── info table (right column) ──────────────────────────────────
+      const int col1X = barX + barW + 24;
+      const int col2X = col1X + 170;
+      int rowY = barY;
+      const int rowH = 22;
+
+      auto row = [&](const wxString &label, const wxString &value,
+                     const wxColor &valCol = wxColor(139,115,85)) {
+        gc->SetFont(wxFont(9, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                           wxFONTWEIGHT_BOLD),
+                    wxColor(90, 90, 90));
+        gc->DrawText(label, col1X, rowY);
+        gc->SetFont(wxFont(9, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
                            wxFONTWEIGHT_NORMAL),
-                    *wxBLACK);
-        wxString percentText = wxString::Format("%d%%", m_batteryPercentage);
-        gc->DrawText(percentText, barX, barY + barHeight + 10);
+                    valCol);
+        gc->DrawText(value, col2X, rowY);
+        rowY += rowH;
+      };
 
-        // Draw battery info text
-        int textX = barX + barWidth + 20;
-        int textY = barY;
+      // section heading
+      gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+                         wxFONTWEIGHT_BOLD),
+                  wxColor(101,67,33));
+      gc->DrawText("BATTERY — " + m_batteryPath, col1X, rowY - rowH);
+      rowY += 4;
 
-        auto drawText = [&](const wxString &text) {
-          gc->DrawText(text, textX, textY);
-          textY += 20;
-        };
+      wxColor stateCol =
+          m_state.IsSameAs("Charging", false)      ? wxColor(0, 150, 0)
+          : m_state.IsSameAs("Discharging", false) ? wxColor(180, 80, 0)
+                                                   : wxColor(60, 60, 60);
 
-        drawText(wxString::Format("Power Supply Type: %s", m_powerSupplyType));
-        drawText(wxString::Format("Battery State: %s", m_batteryState));
+      row("Vendor", m_vendor);
+      row("Model", m_model);
+      row("Serial", m_serial);
+      row("State", m_state, stateCol);
+      row("Percentage", wxString::Format("%d %%", m_percentage));
+      row("Energy now", wxString::Format("%.3f Wh", m_energyNow));
+      row("Energy full", wxString::Format("%.3f Wh", m_energyFull));
+      row("Energy full design",
+          wxString::Format("%.3f Wh", m_energyFullDesign));
+      row("Energy rate", wxString::Format("%.3f W", m_energyRate));
+      row("Voltage", wxString::Format("%.3f V", m_voltage));
+      row("Voltage min design", wxString::Format("%.3f V", m_voltageMinDesign));
+      row("Capacity", wxString::Format("%d %%", m_healthPct));
+      row("Capacity level", m_capacityLevel);
+      row("Charge cycles", wxString::Format("%d", m_cycleCnt));
+      row("Technology", m_technology);
+      row("Time remaining", m_timeRemaining,
+          m_state.IsSameAs("Charging", false) ? wxColor(0, 130, 0)
+                                              : wxColor(160, 60, 0));
 
-        // Draw the new battery information
-        wxStringTokenizer tokenizer(m_batteryInfo, "\n");
-        while (tokenizer.HasMoreTokens()) {
-          drawText(tokenizer.GetNextToken());
-        }
-
-        delete gc;
-      }
+      delete gc;
     }
 
-    void OnTimer(wxTimerEvent &event) {
+    // ------------------------------------------------------------------ //
+    void OnTimer(wxTimerEvent &) {
       UpdateBatteryInfo();
-      Refresh(); // Request a repaint
+      Refresh();
     }
   };
 
@@ -2189,9 +2338,9 @@ bool MyApp::OnInit() {
   motherboardInfoPane->SetSizer(motherBoardSizer);
   motherboardInfoPane->Layout();
 
-  //----------------------- CPUI NFORMATION ---------------------------------
+  //----------------------- CPU INFORMATION ---------------------------------
   wxStaticBoxSizer *cpuInfoSizer =
-      new wxStaticBoxSizer(wxVERTICAL, cpuInfoPane, "CPU INFORMATION");
+      new wxStaticBoxSizer(wxVERTICAL, cpuInfoPane, "CPU & GPU INFORMATION");
 
   class CustomCPUCoreGauge : public wxPanel {
   public:
@@ -2256,6 +2405,19 @@ bool MyApp::OnInit() {
     void PopulateCPUInfo() {
       std::vector<std::pair<wxString, wxString>> info = GetCPUInfo();
       for (const auto &[key, value] : info) {
+
+        // Section divider row
+        if (value.IsEmpty()) {
+          wxStaticText *divider =
+              new wxStaticText(this, wxID_ANY, key, wxDefaultPosition,
+                               wxDefaultSize, wxALIGN_CENTRE_HORIZONTAL);
+          divider->SetFont(divider->GetFont().Bold());
+          divider->SetForegroundColour(wxColour(50, 50, 180));
+          m_mainSizer->Add(divider, 0, wxEXPAND | wxTOP | wxBOTTOM, 8);
+          continue;
+        }
+
+        // Normal key/value row
         wxBoxSizer *rowSizer = new wxBoxSizer(wxHORIZONTAL);
         wxStaticText *keyLabel = new wxStaticText(this, wxID_ANY, key + ":");
         keyLabel->SetFont(keyLabel->GetFont().Bold());
@@ -2263,55 +2425,126 @@ bool MyApp::OnInit() {
 
         rowSizer->Add(keyLabel, 0, wxALL, 5);
         rowSizer->Add(valueLabel, 1, wxALL, 5);
-
-        m_mainSizer->Add(rowSizer, 0, wxEXPAND | wxALL, 5);
+        m_mainSizer->Add(rowSizer, 0, wxEXPAND | wxALL, 3);
       }
     }
 
     std::vector<std::pair<wxString, wxString>> GetCPUInfo() {
-      std::vector<std::pair<wxString, wxString>> info;
-      std::ifstream cpuinfo("/proc/cpuinfo");
-      std::string line;
-      std::string model_name, vendor_id, cpu_family;
-      m_numCores = 0;
+          std::vector<std::pair<wxString, wxString>> info;
+          std::ifstream cpuinfo("/proc/cpuinfo");
+          std::string line;
+          std::string model_name, vendor_id;
+          int physicalCores = 0;
+          m_numCores = 0;  // reset before counting
 
-      while (std::getline(cpuinfo, line)) {
-        std::istringstream iss(line);
-        std::string key, value;
-        if (std::getline(iss, key, ':') && std::getline(iss, value)) {
-          key = Trim(key);
-          value = Trim(value);
-          if (key == "model name" && model_name.empty())
-            model_name = value;
-          if (key == "vendor_id" && vendor_id.empty())
-            vendor_id = value;
-          if (key == "cpu family" && cpu_family.empty())
-            cpu_family = value;
-          if (key == "processor")
-            m_numCores++;
+          // Single pass — collect everything from /proc/cpuinfo
+          while (std::getline(cpuinfo, line)) {
+            std::istringstream iss(line);
+            std::string key, value;
+            if (std::getline(iss, key, ':') && std::getline(iss, value)) {
+              key   = Trim(key);
+              value = Trim(value);
+              if (key == "processor")
+                m_numCores++;
+              if (key == "model name" && model_name.empty())
+                model_name = value;
+              if (key == "vendor_id" && vendor_id.empty())
+                vendor_id = value;
+              if (key == "cpu cores" && physicalCores == 0)
+                physicalCores = std::stoi(value);
+            }
+          }
+          if (physicalCores == 0) physicalCores = m_numCores;
+
+          // Architecture
+          wxArrayString uname_output;
+          wxString arch_str = "Unknown";
+          if (wxExecute("uname -m", uname_output, wxEXEC_SYNC) == 0 &&
+              !uname_output.IsEmpty()) {
+            if      (uname_output[0] == "x86_64")            arch_str = "64-bit";
+            else if (uname_output[0].Contains("386") ||
+                     uname_output[0].Contains("i686"))        arch_str = "32-bit";
+            else                                              arch_str = uname_output[0];
+          }
+
+          // ── CPU section ───────────────────────────────────────────────────
+          info.emplace_back("CPU Manufacturer",   vendor_id);
+          info.emplace_back("CPU Model",          model_name);
+          info.emplace_back("CPU Architecture",   arch_str);
+          info.emplace_back("CPU Physical Cores", std::to_string(physicalCores));
+          info.emplace_back("CPU Logical Threads",std::to_string(m_numCores));
+
+          // ── GPU section ───────────────────────────────────────────────────
+          wxString gpuVendor = "Unknown", gpuName = "Unknown",
+                   gpuDriver = "Unknown", gpuVRAM = "Unknown";
+
+          // lspci — most reliable for name on any GPU
+          wxArrayString lspci;
+          if (wxExecute("lspci", lspci, wxEXEC_SYNC) == 0) {
+            for (const auto &l : lspci) {
+              if (l.Contains("VGA") || l.Contains("Display") ||
+                  l.Contains("3D")  || l.Contains("GPU")) {
+                gpuName = l.AfterFirst(':').AfterFirst(':').Trim(false);
+                break;
+              }
+            }
+          }
+
+          // sysfs — vendor, driver, VRAM
+          // Try card0 through card2 explicitly (wxDir glob can miss render nodes)
+          for (const wxString &card : { wxString("card0"),
+                                         wxString("card1"),
+                                         wxString("card2") }) {
+            wxString base = "/sys/class/drm/" + card + "/device/";
+            if (!wxDirExists(base)) continue;
+
+            // Vendor
+            if (gpuVendor == "Unknown") {
+              wxTextFile vf;
+              if (vf.Open(base + "vendor")) {
+                wxString vid = vf.GetFirstLine().Trim().Lower();
+                vf.Close();
+                if      (vid == "0x1002") gpuVendor = "AMD";
+                else if (vid == "0x10de") gpuVendor = "NVIDIA";
+                else if (vid == "0x8086") gpuVendor = "Intel";
+                else                      gpuVendor = vid;
+              }
+            }
+
+            // Driver — readlink on the driver symlink
+            if (gpuDriver == "Unknown") {
+              std::string dpath = std::string(base.mb_str()) + "driver";
+              char buf[512] = {};
+              ssize_t len = readlink(dpath.c_str(), buf, sizeof(buf) - 1);
+              if (len > 0)
+                gpuDriver = wxString::FromUTF8(buf).AfterLast('/');
+            }
+
+            // VRAM — amdgpu exposes this node
+            if (gpuVRAM == "Unknown") {
+              wxTextFile vramF;
+              if (vramF.Open(base + "mem_info_vram_total")) {
+                wxString raw = vramF.GetFirstLine().Trim();
+                vramF.Close();
+                unsigned long long bytes = 0;
+                raw.ToULongLong(&bytes);
+                if (bytes > 0)
+                  gpuVRAM = wxString::Format("%.0f MB",
+                                (double)bytes / (1024.0 * 1024.0));
+              }
+            }
+
+            break; // found a valid card, stop
+          }
+
+          info.emplace_back("── GPU ──",      "");   // divider
+          info.emplace_back("GPU Vendor",     gpuVendor);
+          info.emplace_back("GPU Name",       gpuName);
+          info.emplace_back("GPU Driver",     gpuDriver);
+          info.emplace_back("GPU VRAM",       gpuVRAM);
+
+          return info;
         }
-      }
-
-      wxArrayString uname_output;
-      wxString arch_str = "Unknown";
-      if (wxExecute("uname -m", uname_output) == 0 && !uname_output.IsEmpty()) {
-        if (uname_output[0] == "x86_64") {
-          arch_str = "64-bit";
-        } else if (uname_output[0].Contains("386") ||
-                   uname_output[0].Contains("i686")) {
-          arch_str = "32-bit";
-        } else {
-          arch_str = uname_output[0];
-        }
-      }
-
-      info.emplace_back("Manufacturer", vendor_id);
-      info.emplace_back("Model", model_name);
-      info.emplace_back("Architecture", arch_str);
-      info.emplace_back("Number of Cores", std::to_string(m_numCores));
-
-      return info;
-    }
 
     void CreateCoreGauges() {
       wxBoxSizer *coresSizer = new wxBoxSizer(wxVERTICAL);
@@ -2680,7 +2913,7 @@ void MyFrame::OnExit(wxCommandEvent &event) { Close(true); };
 void MyFrame::OnAbout(wxCommandEvent &event) {
   wxMessageBox(
       "Developer: Wanjare Samuel\nDate: Friday 7th May 2024\nWritten "
-      "in C++\nView Your system Info hassle free \nApp Version: 0.2.3-beta",
+      "in C++\nView Your system Info hassle free \nApp Version: 0.3.1-beta",
       "About System Info", wxOK | wxICON_INFORMATION);
 };
 
