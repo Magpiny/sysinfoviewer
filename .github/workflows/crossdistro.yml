@@ -19,7 +19,7 @@ jobs:
   build-ubuntu:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4]
         with:
           submodules: recursive
           fetch-depth: 0 # For git describe in versioning
@@ -28,13 +28,19 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev
+          packages: build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower
           version: 1.0
 
       - name: Install Dependencies (Ubuntu)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev
+          sudo apt-get install -y \
+            build-essential cmake \
+            libwxgtk3.2-dev \        # bump to 3.3 source build when available
+            libcurl4-openssl-dev \
+            libasound2-dev \
+            libdrm-dev \
+            upower
 
       # Cache CMake build artifacts
       - name: Cache CMake build
@@ -87,7 +93,13 @@ jobs:
       - name: Install Dependencies (Fedora)
         run: |
           dnf update -y
-          dnf install -y gcc-c++ cmake wxGTK-devel libcurl-devel alsa-lib-devel
+          dnf install -y \
+            gcc-c++ cmake \
+            wxGTK-devel \
+            libcurl-devel \
+            alsa-lib-devel \
+            libdrm-devel \
+            upower \
 
       - name: Cache CMake build
         uses: actions/cache@v4
@@ -138,7 +150,7 @@ jobs:
       - name: Install Dependencies (Arch)
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel cmake wxwidgets-gtk3 curl alsa-lib
+          pacman -S --noconfirm base-devel cmake wxwidgets-gtk3 curl alsa-lib libdrm upower
 
       - name: Cache CMake build
         uses: actions/cache@v4
@@ -178,13 +190,13 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev file
+          packages: build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower file
           version: 1.0
 
       - name: Install Dependencies (AppImage)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev file
+          sudo apt-get install -y build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower file
 
       # Use fixed versions instead of 'continuous' for reproducibility and security
       - name: Cache AppImage tools
