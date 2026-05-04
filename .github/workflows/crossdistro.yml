@@ -36,7 +36,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             build-essential cmake \
-            libwxgtk3.2-dev \        # bump to 3.3 source build when available
+            libwxgtk3.2-dev \
             libcurl4-openssl-dev \
             libasound2-dev \
             libdrm-dev \
@@ -178,9 +178,9 @@ jobs:
 
   appimage:
     runs-on: ubuntu-latest
-    needs: [build-ubuntu, build-fedora, build-arch] # Wait for all builds to pass
+    needs: [build-ubuntu, build-fedora, build-arch]
     permissions:
-      contents: write # Needed if you want to upload to releases
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
