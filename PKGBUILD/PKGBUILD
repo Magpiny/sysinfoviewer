@@ -1,6 +1,6 @@
 # Maintainer: MAGPINY BO <magpinyb@proton.me>
 pkgname=sysinfoviewer
-pkgver=0.3.1
+pkgver=0.3.2
 pkgrel=1
 pkgdesc="A comprehensive system information viewer built with wxWidgets"
 arch=('x86_64' 'i686' 'aarch64')
