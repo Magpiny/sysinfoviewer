@@ -1533,315 +1533,408 @@ bool MyApp::OnInit() {
   networkPane->Layout();
 
   // ----------------- DISPLAy INFORMATION -------------
-  wxStaticBoxSizer *displaySizer =
-      new wxStaticBoxSizer(wxVERTICAL, displayInfoPane, "DISPLAY INFORMATION");
+  // ----------------- DISPLAY INFORMATION -------------
+    wxStaticBoxSizer *displaySizer =
+        new wxStaticBoxSizer(wxVERTICAL, displayInfoPane, "DISPLAY INFORMATION");
 
-  class DisplayInfoPanel : public wxPanel {
-  public:
-    DisplayInfoPanel(wxWindow *parent) : wxPanel(parent) {
-      wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
-      SetSizer(mainSizer);
+    class DisplayInfoPanel : public wxPanel {
+    public:
+      DisplayInfoPanel(wxWindow *parent) : wxPanel(parent) {
+        wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
+        SetSizer(mainSizer);
 
-      CalculateBaseFontSize();
-      CollectSystemInfo();
-      CreateInfoDisplay();
+        CalculateBaseFontSize();
+        CollectSystemInfo();
+        CreateInfoDisplay();
 
-      Bind(wxEVT_SIZE, &DisplayInfoPanel::OnSize, this);
-    }
-
-  private:
-    struct SystemInfo {
-      std::optional<wxString> desktopEnv;
-      unsigned displayCount = 0;
-      std::optional<wxString> resolution;
-      std::optional<wxString> refreshRate;
-      std::optional<int> colorDepth;
-      std::optional<int> brightness;
-      std::optional<wxString> manufacturer;
-      std::optional<wxString> model;
-      std::optional<wxString> screenSizeInches;
-    } m_systemInfo;
-
-    int m_baseFontSize = 10;
-    std::vector<wxStaticText *> m_infoLabels;
-
-    void CalculateBaseFontSize() {
-      wxDisplay display(0u);
-      wxSize ppi = display.GetPPI();
-      m_baseFontSize = wxMax(10, wxMin(ppi.GetWidth() / 10, 16));
-      if (ppi.GetWidth() > 120) {
-        m_baseFontSize += 2;
-      }
-    }
-
-    void OnSize(wxSizeEvent &event) {
-      UpdateFontSizes();
-      event.Skip();
-    }
-
-    void UpdateFontSizes() {
-      int windowWidth = GetSize().GetWidth();
-      int dynamicSize = wxMax(m_baseFontSize - 2,
-                              wxMin(m_baseFontSize + 2, windowWidth / 50));
-      wxFont font = GetFont();
-      font.SetPointSize(dynamicSize);
-      for (auto *label : m_infoLabels) {
-        label->SetFont(font);
-      }
-      Layout();
-    }
-
-    void CollectSystemInfo() {
-      m_systemInfo.desktopEnv = GetDesktopEnvironment();
-      try {
-        m_systemInfo.displayCount = wxDisplay::GetCount();
-      } catch (...) {
-        m_systemInfo.displayCount = 0;
+        Bind(wxEVT_SIZE, &DisplayInfoPanel::OnSize, this);
       }
 
-      wxArrayString xrandr_output;
-      if (wxExecute("xrandr", xrandr_output) == 0) {
-        for (const wxString &line : xrandr_output) {
-          if (line.Contains(" connected primary")) {
-            wxRegEx re(" (\\d+x\\d+) ");
-            if (re.Matches(line)) {
-              m_systemInfo.resolution = re.GetMatch(line, 1);
-            }
-            wxRegEx size_re(" (\\d+)mm x (\\d+)mm");
-            if (size_re.Matches(line)) {
-              double width_mm, height_mm;
-              size_re.GetMatch(line, 1).ToDouble(&width_mm);
-              size_re.GetMatch(line, 2).ToDouble(&height_mm);
-              if (width_mm > 0 && height_mm > 0) {
-                double diagonal_inches =
-                    std::sqrt(width_mm * width_mm + height_mm * height_mm) /
-                    25.4;
-                m_systemInfo.screenSizeInches =
-                    wxString::Format("%.1f\"", diagonal_inches);
-              }
-            }
-            break;
-          }
-        }
-      }
+    private:
+      struct SystemInfo {
+        std::optional<wxString> desktopEnv;
+        unsigned                displayCount = 0;
+        std::optional<wxString> resolution;
+        std::optional<wxString> refreshRate;
+        std::optional<int>      colorDepth;
+        std::optional<int>      brightness;
+        std::optional<wxString> manufacturer;
+        std::optional<wxString> model;
+        std::optional<wxString> screenSizeInches;
+      } m_systemInfo;
 
-      if (!m_systemInfo.resolution && m_systemInfo.displayCount > 0) {
-        wxDisplay display(0u);
-        wxRect geom = display.GetGeometry();
-        m_systemInfo.resolution =
-            wxString::Format("%dx%d", geom.width, geom.height);
-      }
-
-      if (m_systemInfo.displayCount > 0) {
-        try {
-          wxDisplay display(0u);
-          wxVideoMode mode = display.GetCurrentMode();
-          m_systemInfo.colorDepth = mode.GetDepth();
-        } catch (...) {
-        }
-      }
-
-      m_systemInfo.refreshRate = GetRefreshRate();
-      m_systemInfo.brightness = GetBrightness();
-      auto edidInfo = GetEdidInfo();
-      if (edidInfo) {
-        m_systemInfo.manufacturer = edidInfo->first;
-        m_systemInfo.model = edidInfo->second;
-      }
-    }
-
-    std::optional<wxString> GetDesktopEnvironment() {
-      const char *de = std::getenv("XDG_CURRENT_DESKTOP");
-      if (de)
-        return wxString(de);
-      wxArrayString output;
-      if (wxExecute("cat /etc/*-release | grep PRETTY_NAME", output) == 0 &&
-          !output.IsEmpty()) {
-        wxString prettyName = output[0].AfterFirst('=').Trim().Trim(false);
-        prettyName = prettyName.Mid(1, prettyName.Length() - 2);
-        return prettyName;
-      }
-      return std::nullopt;
-    }
-
-    std::optional<wxString> GetRefreshRate() {
-      wxArrayString output;
-      if (wxExecute("xrandr", output) == 0) {
-        for (const wxString &line : output) {
-          if (line.Contains("*")) {
-            wxStringTokenizer tokenizer(line);
-            while (tokenizer.HasMoreTokens()) {
-              wxString token = tokenizer.GetNextToken();
-              if (token.Contains('*')) {
-                token.Replace("*", "");
-                token.Replace("+", "");
-                double rate;
-                if (token.ToDouble(&rate)) {
-                  return wxString::Format("%.2f", rate);
-                }
-              }
-            }
-          }
-        }
-      }
-      return std::nullopt;
-    }
-
-    std::optional<int> GetBrightness() {
-      namespace fs = std::filesystem;
-      const fs::path backlight_path("/sys/class/backlight");
-      if (fs::exists(backlight_path)) {
-        for (const auto &entry : fs::directory_iterator(backlight_path)) {
-          if (entry.is_directory()) {
-            fs::path brightness_file = entry.path() / "brightness";
-            fs::path max_brightness_file = entry.path() / "max_brightness";
-            if (fs::exists(brightness_file) &&
-                fs::exists(max_brightness_file)) {
-              std::ifstream current_fs(brightness_file);
-              std::ifstream max_fs(max_brightness_file);
-              long current_val, max_val;
-              if (current_fs >> current_val && max_fs >> max_val &&
-                  max_val > 0) {
-                return static_cast<int>(
-                    (static_cast<double>(current_val) / max_val) * 100);
-              }
-            }
-          }
-        }
-      }
-      return std::nullopt;
-    }
-
-    bool GetEdidFromDrm(std::vector<unsigned char> &edid_data) {
-      for (int i = 0; i < 16; ++i) {
-        std::string card_path = "/dev/dri/card" + std::to_string(i);
-        int fd = open(card_path.c_str(), O_RDONLY);
-        if (fd < 0)
-          continue;
-        drmModeRes *res = drmModeGetResources(fd);
-        if (!res) {
-          close(fd);
-          continue;
-        }
-        bool found = false;
-        for (int j = 0; j < res->count_connectors; ++j) {
-          drmModeConnector *conn = drmModeGetConnector(fd, res->connectors[j]);
-          if (conn && conn->connection == DRM_MODE_CONNECTED) {
-            for (int k = 0; k < conn->count_props; ++k) {
-              drmModePropertyRes *prop = drmModeGetProperty(fd, conn->props[k]);
-              if (prop && strcmp(prop->name, "EDID") == 0) {
-                drmModePropertyBlobRes *blob =
-                    drmModeGetPropertyBlob(fd, conn->prop_values[k]);
-                if (blob && blob->length > 0) {
-                  edid_data.assign((unsigned char *)blob->data,
-                                   (unsigned char *)blob->data + blob->length);
-                  found = true;
-                  drmModeFreePropertyBlob(blob);
-                }
-                drmModeFreeProperty(prop);
-                if (found)
-                  break;
-              }
-              if (prop)
-                drmModeFreeProperty(prop);
-            }
-          }
-          drmModeFreeConnector(conn);
-          if (found)
-            break;
-        }
-        drmModeFreeResources(res);
-        close(fd);
-        if (found)
-          return true;
-      }
-      return false;
-    }
-
-    std::optional<std::pair<wxString, wxString>> GetEdidInfo() {
-      std::vector<unsigned char> edid;
-      if (GetEdidFromDrm(edid) && edid.size() >= 128) {
-        wxString manufacturer = wxString::Format(
-            "%c%c%c", ((edid[8] & 0x7C) >> 2) + 'A' - 1,
-            (((edid[8] & 0x03) << 3) | ((edid[9] & 0xE0) >> 5)) + 'A' - 1,
-            (edid[9] & 0x1F) + 'A' - 1);
-        wxString model;
-        for (int i = 54; i < 126; i += 18) {
-          if (edid[i] == 0x00 && edid[i + 1] == 0x00 && edid[i + 2] == 0x00) {
-            int desc_type = edid[i + 3];
-            if (desc_type == 0xFC || desc_type == 0xFE) {
-              wxString str;
-              for (int j = 5; j < 18; ++j) {
-                if (edid[i + j] == 0x0A)
-                  break;
-                if (edid[i + j] >= 32 && edid[i + j] <= 126) {
-                  str += static_cast<char>(edid[i + j]);
-                }
-              }
-              str = str.Trim();
-              if (!str.empty()) {
-                model = str;
-                break;
-              }
-            }
-          }
-        }
-        return std::make_pair(manufacturer, model);
-      }
-      return std::nullopt;
-    }
-
-    void CreateInfoDisplay() {
-      wxSizer *sizer = GetSizer();
-      wxFont boldFont = GetFont();
-      boldFont.MakeBold();
-      boldFont.SetPointSize(m_baseFontSize);
-
-      auto AddInfoLine = [&](const wxString &text) {
-        wxStaticText *label = new wxStaticText(this, wxID_ANY, text);
-        label->SetFont(boldFont);
-        sizer->Add(label, 0, wxALL, 5);
-        m_infoLabels.push_back(label);
+      struct EdidInfo {
+        wxString                manufacturer;
+        wxString                model;
+        std::optional<wxString> screenSizeInches;
+        std::optional<wxString> refreshRate;
       };
 
-      if (m_systemInfo.desktopEnv) {
-        AddInfoLine("DE: " + *m_systemInfo.desktopEnv);
-      }
-      AddInfoLine(wxString::Format("Displays: %u", m_systemInfo.displayCount));
-      if (m_systemInfo.resolution) {
-        AddInfoLine("Resolution: " + *m_systemInfo.resolution);
-      }
-      if (m_systemInfo.screenSizeInches) {
-        AddInfoLine("Screen Size: " + *m_systemInfo.screenSizeInches);
-      }
-      if (m_systemInfo.refreshRate) {
-        AddInfoLine(
-            wxString::Format("Refreshrate: %sHz", *m_systemInfo.refreshRate));
-      }
-      if (m_systemInfo.colorDepth) {
-        AddInfoLine(
-            wxString::Format("Color Depth: %d bit", *m_systemInfo.colorDepth));
-      }
-      if (m_systemInfo.brightness) {
-        AddInfoLine(
-            wxString::Format("Brightness: %d%%", *m_systemInfo.brightness));
-      }
-      if (m_systemInfo.manufacturer) {
-        AddInfoLine("Display Manufacturer: " + *m_systemInfo.manufacturer);
-      }
-      // if (m_systemInfo.model) {
-      //     AddInfoLine("Display Model: " + *m_systemInfo.model);
-      // }
+      int m_baseFontSize = 10;
+      std::vector<wxStaticText *> m_infoLabels;
 
-      UpdateFontSizes();
-    }
-  };
+      // ────────────────────────────────────────────────────────────────
+      void CalculateBaseFontSize() {
+        wxDisplay display(0u);
+        wxSize ppi = display.GetPPI();
+        m_baseFontSize = wxMax(10, wxMin(ppi.GetWidth() / 10, 16));
+        if (ppi.GetWidth() > 120)
+          m_baseFontSize += 2;
+      }
 
-  // Add DISPLAY INFORMATION to the top center of the page 3
-  DisplayInfoPanel *displayInfo = new DisplayInfoPanel(displayInfoPane);
-  displaySizer->Add(displayInfo, 1, wxEXPAND | wxALL, 10);
-  displayInfoPane->SetSizer(displaySizer);
-  displayInfoPane->Layout();
+      void OnSize([[maybe_unused]] wxSizeEvent &event) {
+        UpdateFontSizes();
+        event.Skip();
+      }
+
+      void UpdateFontSizes() {
+        int windowWidth = GetSize().GetWidth();
+        int dynamicSize = wxMax(m_baseFontSize - 2,
+                                wxMin(m_baseFontSize + 2, windowWidth / 50));
+        wxFont font = GetFont();
+        font.SetPointSize(dynamicSize);
+        for (auto *label : m_infoLabels)
+          label->SetFont(font);
+        Layout();
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      void CollectSystemInfo() {
+        m_systemInfo.desktopEnv = GetDesktopEnvironment();
+
+        try {
+          m_systemInfo.displayCount = wxDisplay::GetCount();
+        } catch (...) {
+          m_systemInfo.displayCount = 0;
+        }
+
+        // DRM sysfs — resolution, works on all DEs and display servers
+        ParseDrmSysfs();
+
+        // Fallback resolution from wxDisplay
+        if (!m_systemInfo.resolution && m_systemInfo.displayCount > 0) {
+          wxDisplay display(0u);
+          wxRect geom = display.GetGeometry();
+          m_systemInfo.resolution =
+              wxString::Format("%dx%d", geom.width, geom.height);
+        }
+
+        // Color depth from wxDisplay
+        if (m_systemInfo.displayCount > 0) {
+          try {
+            wxDisplay display(0u);
+            wxVideoMode mode = display.GetCurrentMode();
+            if (mode.GetDepth() > 0)
+              m_systemInfo.colorDepth = mode.GetDepth();
+          } catch (...) {}
+        }
+
+        // Brightness from sysfs backlight
+        m_systemInfo.brightness = GetBrightness();
+
+        // EDID — physical size, refresh rate, manufacturer, model
+        // Pure DRM/sysfs — no DE dependency, works on X11, Wayland,
+        // GNOME, KDE, Cinnamon, Pantheon, XFCE, anything
+        auto edidInfo = GetEdidInfo();
+        if (edidInfo) {
+          if (!edidInfo->manufacturer.IsEmpty())
+            m_systemInfo.manufacturer = edidInfo->manufacturer;
+          if (!edidInfo->model.IsEmpty())
+            m_systemInfo.model = edidInfo->model;
+          if (edidInfo->screenSizeInches.has_value())
+            m_systemInfo.screenSizeInches = edidInfo->screenSizeInches;
+          if (edidInfo->refreshRate.has_value())
+            m_systemInfo.refreshRate = edidInfo->refreshRate;
+        }
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      // Read resolution from DRM sysfs connector modes file.
+      // Works on X11, Wayland, any DE — no xrandr needed.
+      void ParseDrmSysfs() {
+        namespace fs = std::filesystem;
+        const fs::path drm("/sys/class/drm");
+        if (!fs::exists(drm)) return;
+
+        // Priority: eDP (internal panel) > HDMI > DP > anything else
+        auto priority = [](const std::string &name) -> int {
+          if (name.find("eDP")  != std::string::npos) return 0;
+          if (name.find("HDMI") != std::string::npos) return 1;
+          if (name.find("DP")   != std::string::npos) return 2;
+          return 3;
+        };
+
+        struct Connector { fs::path path; int pri; };
+        std::vector<Connector> connected;
+
+        std::error_code ec;
+        for (const auto &entry : fs::directory_iterator(drm, ec)) {
+          std::string name = entry.path().filename().string();
+          // Connector dirs always contain a hyphen e.g. card1-eDP-1
+          if (name.find('-') == std::string::npos) continue;
+
+          fs::path statusFile = entry.path() / "status";
+          if (!fs::exists(statusFile, ec)) continue;
+
+          std::ifstream sf(statusFile);
+          std::string state;
+          if (std::getline(sf, state) && state == "connected")
+            connected.push_back({entry.path(), priority(name)});
+        }
+
+        if (connected.empty()) return;
+
+        std::sort(connected.begin(), connected.end(),
+                  [](const Connector &a, const Connector &b) {
+                    return a.pri < b.pri;
+                  });
+
+        // Use highest-priority connected connector
+        fs::path modesFile = connected[0].path / "modes";
+        if (fs::exists(modesFile, ec)) {
+          std::ifstream mf(modesFile);
+          std::string firstMode;
+          if (std::getline(mf, firstMode) && !firstMode.empty())
+            m_systemInfo.resolution = wxString::FromUTF8(firstMode);
+        }
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      std::optional<wxString> GetDesktopEnvironment() {
+        // Environment variables — most reliable across all DEs
+        for (const char *var :
+             {"XDG_CURRENT_DESKTOP", "DESKTOP_SESSION", "GDMSESSION"}) {
+          const char *val = std::getenv(var);
+          if (val && val[0] != '\0')
+            return wxString::FromUTF8(val);
+        }
+        // Fallback: read /etc/os-release directly (no shell pipe)
+        std::ifstream f("/etc/os-release");
+        std::string line;
+        while (std::getline(f, line)) {
+          if (line.rfind("PRETTY_NAME=", 0) == 0) {
+            std::string val = line.substr(12);
+            if (val.size() >= 2 && val.front() == '"')
+              val = val.substr(1, val.size() - 2);
+            return wxString::FromUTF8(val);
+          }
+        }
+        return std::nullopt;
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      std::optional<int> GetBrightness() {
+        namespace fs = std::filesystem;
+        const fs::path backlight("/sys/class/backlight");
+        if (!fs::exists(backlight)) return std::nullopt;
+
+        std::error_code ec;
+        for (const auto &entry : fs::directory_iterator(backlight, ec)) {
+          if (!entry.is_directory(ec)) continue;
+          fs::path cur = entry.path() / "brightness";
+          fs::path max = entry.path() / "max_brightness";
+          if (!fs::exists(cur, ec) || !fs::exists(max, ec)) continue;
+
+          std::ifstream fc(cur), fm(max);
+          long cv = 0, mv = 0;
+          if ((fc >> cv) && (fm >> mv) && mv > 0)
+            return static_cast<int>(
+                (static_cast<double>(cv) / mv) * 100.0);
+        }
+        return std::nullopt;
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      bool GetEdidFromDrm(std::vector<unsigned char> &edid_data) {
+        for (int i = 0; i < 8; ++i) {
+          std::string path = "/dev/dri/card" + std::to_string(i);
+          int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
+          if (fd < 0) continue;
+
+          drmModeRes *res = drmModeGetResources(fd);
+          if (!res) { close(fd); continue; }
+
+          bool found = false;
+          for (int j = 0; j < res->count_connectors && !found; ++j) {
+            drmModeConnector *conn =
+                drmModeGetConnector(fd, res->connectors[j]);
+            if (!conn) continue;
+
+            if (conn->connection == DRM_MODE_CONNECTED) {
+              for (int k = 0; k < conn->count_props && !found; ++k) {
+                drmModePropertyRes *prop =
+                    drmModeGetProperty(fd, conn->props[k]);
+                if (!prop) continue;
+
+                if (strcmp(prop->name, "EDID") == 0) {
+                  drmModePropertyBlobRes *blob =
+                      drmModeGetPropertyBlob(fd, conn->prop_values[k]);
+                  if (blob && blob->length >= 128) {
+                    edid_data.assign(
+                        static_cast<unsigned char *>(blob->data),
+                        static_cast<unsigned char *>(blob->data) +
+                            blob->length);
+                    found = true;
+                  }
+                  if (blob) drmModeFreePropertyBlob(blob);
+                }
+                drmModeFreeProperty(prop);
+              }
+            }
+            drmModeFreeConnector(conn);
+          }
+          drmModeFreeResources(res);
+          close(fd);
+          if (found) return true;
+        }
+        return false;
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      std::optional<EdidInfo> GetEdidInfo() {
+        std::vector<unsigned char> edid;
+        if (!GetEdidFromDrm(edid) || edid.size() < 128)
+          return std::nullopt;
+
+        // Validate EDID header magic
+        const unsigned char magic[8] =
+            {0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00};
+        if (std::memcmp(edid.data(), magic, 8) != 0)
+          return std::nullopt;
+
+        EdidInfo info;
+
+        // Manufacturer ID — bytes 8-9, ISA PnP packed ASCII
+        char mfr[4] = {
+            static_cast<char>(((edid[8] >> 2) & 0x1F) + 'A' - 1),
+            static_cast<char>((((edid[8] & 0x03) << 3) |
+                                ((edid[9] >> 5) & 0x07)) + 'A' - 1),
+            static_cast<char>((edid[9] & 0x1F) + 'A' - 1),
+            '\0'
+        };
+        info.manufacturer = wxString::FromUTF8(mfr);
+
+        // Physical size — bytes 21-22 in cm → diagonal inches
+        int w_cm = edid[21];
+        int h_cm = edid[22];
+        if (w_cm > 0 && h_cm > 0) {
+          double w_mm = w_cm * 10.0;
+          double h_mm = h_cm * 10.0;
+          double diag = std::sqrt(w_mm * w_mm + h_mm * h_mm) / 25.4;
+          info.screenSizeInches = wxString::Format("%.1f\"", diag);
+        }
+
+        // Detailed timing descriptors — bytes 54-125, 4 × 18 bytes
+        for (int i = 54; i + 17 < 128; i += 18) {
+          uint16_t pixel_clock_raw =
+              static_cast<uint16_t>(edid[i]) |
+              (static_cast<uint16_t>(edid[i + 1]) << 8);
+
+          // Non-zero pixel clock → timing descriptor → compute refresh rate
+          if (pixel_clock_raw > 0 && !info.refreshRate.has_value()) {
+            uint32_t pixel_clock = pixel_clock_raw * 10000UL;
+
+            uint32_t h_active =
+                edid[i+2] | ((static_cast<uint32_t>(edid[i+4] >> 4)) << 8);
+            uint32_t h_blank =
+                edid[i+3] | ((static_cast<uint32_t>(edid[i+4] & 0x0F)) << 8);
+            uint32_t v_active =
+                edid[i+5] | ((static_cast<uint32_t>(edid[i+7] >> 4)) << 8);
+            uint32_t v_blank =
+                edid[i+6] | ((static_cast<uint32_t>(edid[i+7] & 0x0F)) << 8);
+
+            uint32_t h_total = h_active + h_blank;
+            uint32_t v_total = v_active + v_blank;
+
+            if (h_total > 0 && v_total > 0) {
+              double refresh =
+                  static_cast<double>(pixel_clock) /
+                  (static_cast<double>(h_total) *
+                   static_cast<double>(v_total));
+              info.refreshRate = wxString::Format("%.2f", refresh);
+            }
+          }
+
+          // Monitor name (0xFC) or text (0xFE) descriptor
+          if (edid[i]   == 0x00 && edid[i+1] == 0x00 &&
+              edid[i+2] == 0x00 && info.model.IsEmpty() &&
+              (edid[i+3] == 0xFC || edid[i+3] == 0xFE)) {
+            wxString name;
+            for (int j = i + 5; j < i + 18; ++j) {
+              if (edid[j] == 0x0A) break;
+              if (edid[j] >= 0x20 && edid[j] <= 0x7E)
+                name += static_cast<char>(edid[j]);
+            }
+            name = name.Trim();
+            if (!name.IsEmpty())
+              info.model = name;
+          }
+        }
+
+        return info;
+      }
+
+      // ────────────────────────────────────────────────────────────────
+      void CreateInfoDisplay() {
+        wxSizer *sizer = GetSizer();
+        wxFont boldFont = GetFont();
+        boldFont.MakeBold();
+        boldFont.SetPointSize(m_baseFontSize);
+
+        // Skips the row entirely if value is empty
+        auto AddInfoLine = [&](const wxString &label,
+                                const wxString &value) {
+          if (value.IsEmpty()) return;
+          wxBoxSizer *row = new wxBoxSizer(wxHORIZONTAL);
+          wxStaticText *key = new wxStaticText(this, wxID_ANY, label + ":");
+          key->SetFont(boldFont);
+          wxStaticText *val = new wxStaticText(this, wxID_ANY, value);
+          row->Add(key, 0, wxALL, 4);
+          row->Add(val, 1, wxALL, 4);
+          sizer->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT, 5);
+          m_infoLabels.push_back(key);
+          m_infoLabels.push_back(val);
+        };
+
+        if (m_systemInfo.desktopEnv)
+          AddInfoLine("Desktop",      *m_systemInfo.desktopEnv);
+
+        AddInfoLine("Displays",
+                    wxString::Format("%u", m_systemInfo.displayCount));
+
+        if (m_systemInfo.resolution)
+          AddInfoLine("Resolution",   *m_systemInfo.resolution);
+
+        if (m_systemInfo.screenSizeInches)
+          AddInfoLine("Screen Size",  *m_systemInfo.screenSizeInches);
+
+        if (m_systemInfo.refreshRate)
+          AddInfoLine("Refresh Rate", *m_systemInfo.refreshRate + " Hz");
+
+        if (m_systemInfo.colorDepth)
+          AddInfoLine("Color Depth",
+                      wxString::Format("%d bit", *m_systemInfo.colorDepth));
+
+        if (m_systemInfo.brightness)
+          AddInfoLine("Brightness",
+                      wxString::Format("%d%%", *m_systemInfo.brightness));
+
+        if (m_systemInfo.manufacturer)
+          AddInfoLine("Manufacturer", *m_systemInfo.manufacturer);
+
+        if (m_systemInfo.model && !m_systemInfo.model->IsEmpty())
+          AddInfoLine("Model",        *m_systemInfo.model);
+
+        UpdateFontSizes();
+      }
+    };
+
+    // Add DISPLAY INFORMATION to the top center of page 3
+    DisplayInfoPanel *displayInfo = new DisplayInfoPanel(displayInfoPane);
+    displaySizer->Add(displayInfo, 1, wxEXPAND | wxALL, 10);
+    displayInfoPane->SetSizer(displaySizer);
+    displayInfoPane->Layout();
+
   // ------------------ DISPLAY END =====================
 
   // ---------------------------- STORAGE DEVICES

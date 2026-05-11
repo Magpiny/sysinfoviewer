@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.2.0)
+cmake_minimum_required(VERSION 3.2.0)
 project(sysinfoviewer VERSION 0.2.3 LANGUAGES CXX)
 
 set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix")
@@ -41,7 +41,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE ALSA::ALSA)
 
 # Link libdrm
 if(DRM_FOUND)
-    target_link_libraries(${PROJECT_NAME} PRIVATE ${DRM_LIBRARIES})
+  target_link_libraries(${PROJECT_NAME} PRIVATE ${DRM_LIBRARIES})
 endif()
 
 # Include directories
