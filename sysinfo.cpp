@@ -103,11 +103,22 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include <stdexcept>
-#include <wx/wrapsizer.h>
-
+#include <algorithm>
+#include <climits>
+#include <functional>
+#include <map>
 #include <optional>
+#include <set>
+#include <wx/artprov.h>
+#include <wx/checkbox.h>
+#include <wx/clipbrd.h>
+#include <wx/dataobj.h>
+#include <wx/dcmemory.h>
 #include <wx/font.h>
+#include <wx/imaglist.h>
+#include <wx/srchctrl.h>
+#include <wx/statline.h>
+#include <wx/timer.h>
 
 class MyApp : public wxApp {
 public:
@@ -149,7 +160,10 @@ bool MyApp::OnInit() {
   // CREATE FOUR PANELS FOR THE PAGES
   wxPanel *systeminfoPage = new wxPanel(treebook, wxID_ANY);
   wxPanel *resourcesInfoPage = new wxPanel(treebook, wxID_ANY);
-  wxPanel *miscInfoPage = new wxPanel(treebook, wxID_ANY);
+  wxScrolledWindow *miscInfoPage =
+      new wxScrolledWindow(treebook, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                           wxVSCROLL | wxHSCROLL);
+  miscInfoPage->SetScrollRate(10, 10);
   wxPanel *appsInfoPage = new wxPanel(treebook, wxID_ANY);
 
   /*********** BEGIN PAGE 1: Sytem Information ****************************/
@@ -991,7 +1005,7 @@ bool MyApp::OnInit() {
       const int rowH = 22;
 
       auto row = [&](const wxString &label, const wxString &value,
-                     const wxColor &valCol = wxColor(139,115,85)) {
+                     const wxColor &valCol = wxColor(139, 115, 85)) {
         gc->SetFont(wxFont(9, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
                            wxFONTWEIGHT_BOLD),
                     wxColor(90, 90, 90));
@@ -1006,7 +1020,7 @@ bool MyApp::OnInit() {
       // section heading
       gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
                          wxFONTWEIGHT_BOLD),
-                  wxColor(101,67,33));
+                  wxColor(101, 67, 33));
       gc->DrawText("BATTERY — " + m_batteryPath, col1X, rowY - rowH);
       rowY += 4;
 
@@ -1073,181 +1087,949 @@ bool MyApp::OnInit() {
   //-------------------------------------------------------------------------------------------
 
   /************* BEGIN: Populate page 2 values ***************/
-  class ProcessInfo {
-  public:
-    long pid;
+  struct ProcessInfo {
+    long pid = 0;
     wxString user;
     wxString name;
-    wxString cpu;
-    wxString ram;
+    double cpuVal = 0.0;
+    wxString cpuFormatted;
+    double ramPercentVal = 0.0;
+    wxString ramPercentFormatted;
+    long long rssKiB = 0;
+    wxString ramFormatted;
     wxString time;
     wxString command;
+    int iconIndex = -1;
+  };
+
+  class ProcessIconManager {
+  public:
+    static ProcessIconManager &Get() {
+      static ProcessIconManager instance;
+      return instance;
+    }
+
+    void Initialize(wxImageList *imageList) {
+      m_imageList = imageList;
+      InitCacheDir();
+      ScanDesktopFiles();
+    }
+
+    int GetIconIndex(const wxString &procName, const wxString &cmdLine = "") {
+      if (!m_imageList)
+        return -1;
+
+      wxString key = procName.Lower().Trim();
+      if (key.IsEmpty())
+        key = "unknown";
+
+      // 1. Check in-memory index cache
+      auto it = m_iconIndexMap.find(key);
+      if (it != m_iconIndexMap.end()) {
+        return it->second;
+      }
+
+      // 2. Check disk cache
+      wxString cachedFilePath =
+          m_cacheDir + wxFILE_SEP_PATH + SanitizeFileName(key) + ".png";
+      if (wxFileExists(cachedFilePath)) {
+        wxImage img;
+        if (img.LoadFile(cachedFilePath, wxBITMAP_TYPE_PNG)) {
+          if (img.GetWidth() != 24 || img.GetHeight() != 24) {
+            img = img.Rescale(24, 24, wxIMAGE_QUALITY_HIGH);
+          }
+          wxBitmap bmp(img);
+          int idx = m_imageList->Add(bmp);
+          m_iconIndexMap[key] = idx;
+          return idx;
+        }
+      }
+
+      // 3. Try finding in system icon themes via desktop map or direct name
+      wxString iconTarget;
+      auto dIt = m_desktopMap.find(key);
+      if (dIt != m_desktopMap.end()) {
+        iconTarget = dIt->second;
+      } else {
+        iconTarget = key;
+      }
+
+      wxString systemIconPath = FindSystemIcon(iconTarget);
+      if (systemIconPath.IsEmpty() && iconTarget != key) {
+        systemIconPath = FindSystemIcon(key);
+      }
+
+      if (!systemIconPath.IsEmpty()) {
+        wxImage img;
+        if (img.LoadFile(systemIconPath)) {
+          img = img.Rescale(24, 24, wxIMAGE_QUALITY_HIGH);
+          // Save to disk cache for persistent fast boot
+          img.SaveFile(cachedFilePath, wxBITMAP_TYPE_PNG);
+          wxBitmap bmp(img);
+          int idx = m_imageList->Add(bmp);
+          m_iconIndexMap[key] = idx;
+          return idx;
+        }
+      }
+
+      // 4. Fallback: Generate clean, distinctive procedural icon and save to
+      // cache
+      wxImage procImg = GenerateProceduralIcon(procName, cmdLine);
+      procImg.SaveFile(cachedFilePath, wxBITMAP_TYPE_PNG);
+      wxBitmap bmp(procImg);
+      int idx = m_imageList->Add(bmp);
+      m_iconIndexMap[key] = idx;
+      return idx;
+    }
+
+  private:
+    ProcessIconManager() : m_imageList(nullptr) {}
+
+    wxImageList *m_imageList;
+    wxString m_cacheDir;
+    std::map<wxString, wxString> m_desktopMap;
+    std::map<wxString, int> m_iconIndexMap;
+
+    void InitCacheDir() {
+      wxString home = wxFileName::GetHomeDir();
+      m_cacheDir = home + wxFILE_SEP_PATH + ".cache" + wxFILE_SEP_PATH +
+                   "sysinfoviewer" + wxFILE_SEP_PATH + "icons";
+      if (!wxDirExists(m_cacheDir)) {
+        wxFileName::Mkdir(m_cacheDir, wxS_DIR_DEFAULT, wxPATH_MKDIR_FULL);
+      }
+    }
+
+    wxString SanitizeFileName(const wxString &name) {
+      wxString clean = name;
+      clean.Replace("/", "_");
+      clean.Replace("\\", "_");
+      clean.Replace(":", "_");
+      clean.Replace("[", "");
+      clean.Replace("]", "");
+      clean.Replace(" ", "_");
+      return clean;
+    }
+
+    void ScanDesktopFiles() {
+      wxArrayString searchDirs;
+      searchDirs.Add("/usr/share/applications");
+      searchDirs.Add("/usr/local/share/applications");
+      searchDirs.Add(wxFileName::GetHomeDir() + "/.local/share/applications");
+      searchDirs.Add("/var/lib/flatpak/exports/share/applications");
+      searchDirs.Add("/var/lib/snapd/desktop/applications");
+
+      for (const auto &dirPath : searchDirs) {
+        if (!wxDirExists(dirPath))
+          continue;
+
+        wxDir dir(dirPath);
+        wxString filename;
+        bool cont = dir.GetFirst(&filename, "*.desktop", wxDIR_FILES);
+        while (cont) {
+          wxString fullPath = dirPath + wxFILE_SEP_PATH + filename;
+          ParseDesktopFile(fullPath);
+          cont = dir.GetNext(&filename);
+        }
+      }
+    }
+
+    void ParseDesktopFile(const wxString &filePath) {
+      wxTextFile file;
+      if (!file.Open(filePath))
+        return;
+
+      wxString execVal;
+      wxString iconVal;
+      bool inMainSection = false;
+
+      for (size_t i = 0; i < file.GetLineCount(); ++i) {
+        wxString line = file.GetLine(i).Trim(true).Trim(false);
+        if (line.StartsWith("[Desktop Entry]")) {
+          inMainSection = true;
+        } else if (line.StartsWith("[") && inMainSection) {
+          break;
+        }
+
+        if (inMainSection) {
+          if (line.StartsWith("Exec=")) {
+            execVal = line.AfterFirst('=').Trim();
+          } else if (line.StartsWith("Icon=")) {
+            iconVal = line.AfterFirst('=').Trim();
+          }
+        }
+      }
+      file.Close();
+
+      if (!execVal.IsEmpty() && !iconVal.IsEmpty()) {
+        wxString execBase = execVal;
+        if (execBase.StartsWith("env ")) {
+          execBase = execBase.Mid(4).Trim(false);
+          while (execBase.Contains("=") &&
+                 execBase.Find('=') < execBase.Find(' ')) {
+            execBase = execBase.AfterFirst(' ').Trim(false);
+          }
+        }
+        size_t spacePos = execBase.Find(' ');
+        if (spacePos != wxString::npos) {
+          execBase = execBase.Left(spacePos);
+        }
+        size_t slashPos = execBase.Find('/', true);
+        if (slashPos != wxString::npos) {
+          execBase = execBase.Mid(slashPos + 1);
+        }
+        execBase = execBase.Lower().Trim();
+
+        if (!execBase.IsEmpty()) {
+          m_desktopMap[execBase] = iconVal;
+        }
+
+        wxFileName fn(filePath);
+        wxString desktopName = fn.GetName().Lower();
+        m_desktopMap[desktopName] = iconVal;
+      }
+    }
+
+    wxString FindSystemIcon(const wxString &iconName) {
+      if (iconName.IsEmpty())
+        return "";
+
+      if (iconName.StartsWith("/") && wxFileExists(iconName)) {
+        return iconName;
+      }
+
+      static const wxArrayString baseDirs = {
+          "/usr/share/pixmaps",
+          "/usr/share/icons/hicolor/48x48/apps",
+          "/usr/share/icons/hicolor/32x32/apps",
+          "/usr/share/icons/hicolor/24x24/apps",
+          "/usr/share/icons/hicolor/16x16/apps",
+          "/usr/share/icons/hicolor/64x64/apps",
+          "/usr/share/icons/hicolor/128x128/apps",
+          "/usr/share/icons/hicolor/256x256/apps",
+          "/usr/share/icons/Adwaita/48x48/apps",
+          "/usr/share/icons/Adwaita/32x32/apps",
+          "/usr/share/icons/breeze/apps/48",
+          "/usr/share/icons/breeze/apps/32",
+          "/usr/share/icons/Papirus/48x48/apps",
+          "/usr/share/icons/Papirus/32x32/apps"};
+
+      static const wxArrayString exts = {".png", ".xpm", ".ico"};
+
+      for (const auto &dir : baseDirs) {
+        if (!wxDirExists(dir))
+          continue;
+
+        for (const auto &ext : exts) {
+          wxString candidate = dir + wxFILE_SEP_PATH + iconName + ext;
+          if (wxFileExists(candidate)) {
+            return candidate;
+          }
+        }
+        wxString direct = dir + wxFILE_SEP_PATH + iconName;
+        if (wxFileExists(direct)) {
+          return direct;
+        }
+      }
+
+      return "";
+    }
+
+    wxImage GenerateProceduralIcon(const wxString &procName,
+                                   const wxString &cmdLine) {
+      int w = 24, h = 24;
+      wxBitmap bmp(w, h, 32);
+      wxMemoryDC memDC(bmp);
+
+      wxColour bgColor;
+      wxColour fgColor(*wxWHITE);
+      wxString label;
+
+      bool isKernel = procName.StartsWith("[") || cmdLine.StartsWith("[");
+      bool isShell =
+          (procName == "bash" || procName == "zsh" || procName == "sh" ||
+           procName == "fish" || procName == "python" ||
+           procName == "python3" || procName == "node" || procName == "perl" ||
+           procName == "ruby");
+      bool isDaemon =
+          (procName.EndsWith("d") || procName.Contains("systemd") ||
+           procName.Contains("dbus") || procName.Contains("wireplumber") ||
+           procName.Contains("pipewire"));
+
+      if (isKernel) {
+        bgColor = wxColour(55, 65, 81);
+        label = "K";
+      } else if (isShell) {
+        bgColor = wxColour(30, 41, 59);
+        fgColor = wxColour(16, 185, 129);
+        label = ">_";
+      } else if (isDaemon) {
+        bgColor = wxColour(79, 70, 229);
+        label = procName.Left(1).Upper();
+      } else {
+        static const std::vector<wxColour> palette = {
+            wxColour(59, 130, 246), // Blue
+            wxColour(16, 185, 129), // Emerald
+            wxColour(139, 92, 246), // Violet
+            wxColour(236, 72, 153), // Pink
+            wxColour(245, 158, 11), // Amber
+            wxColour(6, 182, 212),  // Cyan
+            wxColour(99, 102, 241), // Indigo
+            wxColour(20, 184, 166), // Teal
+            wxColour(249, 115, 22), // Orange
+            wxColour(225, 29, 72),  // Rose
+            wxColour(132, 204, 22), // Lime
+            wxColour(14, 165, 233)  // Sky
+        };
+        size_t hashVal = std::hash<std::string>{}(procName.ToStdString());
+        bgColor = palette[hashVal % palette.size()];
+
+        wxString clean = procName;
+        clean.Trim(false);
+        if (!clean.IsEmpty()) {
+          label = clean.Left(1).Upper();
+        } else {
+          label = "P";
+        }
+      }
+
+      wxGraphicsContext *gc = wxGraphicsContext::Create(memDC);
+      if (gc) {
+        gc->SetAntialiasMode(wxANTIALIAS_DEFAULT);
+        gc->SetBrush(wxBrush(bgColor));
+        gc->SetPen(wxPen(bgColor.ChangeLightness(115), 1));
+        gc->DrawRoundedRectangle(1.0, 1.0, 22.0, 22.0, 4.0);
+
+        int fontSize = (label.Length() > 1) ? 7 : 9;
+        wxFont font(wxFontInfo(fontSize).Bold().Family(wxFONTFAMILY_SWISS));
+        gc->SetFont(font, fgColor);
+        double tw = 0, th = 0, td = 0, te = 0;
+        gc->GetTextExtent(label, &tw, &th, &td, &te);
+        double tx = (24.0 - tw) / 2.0;
+        double ty = (24.0 - th) / 2.0;
+        gc->DrawText(label, tx, ty);
+        delete gc;
+      }
+
+      return bmp.ConvertToImage();
+    }
   };
 
   class ResourcesInfoPage : public wxPanel {
   public:
-    ResourcesInfoPage(wxPanel *parent) : wxPanel(parent, wxID_ANY) {
-      // Main sizer for the panel
+    enum {
+      ID_PROC_TIMER = wxID_HIGHEST + 200,
+      ID_PROC_SEARCH,
+      ID_PROC_AUTO_REFRESH,
+      ID_PROC_REFRESH,
+      ID_PROC_END_PROCESS,
+      ID_PROC_SIGTERM,
+      ID_PROC_SIGKILL,
+      ID_PROC_COPY_PID,
+      ID_PROC_COPY_NAME,
+      ID_PROC_COPY_CMD,
+      ID_PROC_DETAILS
+    };
+
+    ResourcesInfoPage(wxPanel *parent)
+        : wxPanel(parent, wxID_ANY), m_refreshTimer(this, ID_PROC_TIMER),
+          m_sortColumn(3), m_sortAscending(false), m_selectedPid(-1) {
       wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
 
-      // Create the list control
-      m_listCtrl = new wxListCtrl(this, wxID_ANY, wxDefaultPosition,
-                                  wxDefaultSize, wxLC_REPORT | wxLC_SINGLE_SEL);
+      // --- Top Toolbar ---
+      wxBoxSizer *toolbarSizer = new wxBoxSizer(wxHORIZONTAL);
 
-      m_listCtrl->InsertColumn(0, "PID");
-      m_listCtrl->InsertColumn(1, "User");
-      m_listCtrl->InsertColumn(2, "Name");
-      m_listCtrl->InsertColumn(3, "CPU%");
-      m_listCtrl->InsertColumn(4, "RAM%");
-      m_listCtrl->InsertColumn(5, "Time");
-      m_listCtrl->InsertColumn(6, "Command");
-      m_listCtrl->InsertColumn(7, "Actions");
+      m_searchCtrl =
+          new wxSearchCtrl(this, ID_PROC_SEARCH, "", wxDefaultPosition,
+                           wxSize(280, -1), wxTE_PROCESS_ENTER);
+      m_searchCtrl->SetDescriptiveText(
+          "Filter processes by name, PID, user...");
+      m_searchCtrl->ShowSearchButton(true);
+      m_searchCtrl->ShowCancelButton(true);
+      toolbarSizer->Add(m_searchCtrl, 1, wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 
-      mainSizer->Add(m_listCtrl, 1, wxEXPAND | wxALL, 5);
+      m_autoRefreshCheckBox =
+          new wxCheckBox(this, ID_PROC_AUTO_REFRESH, "Auto-refresh (3s)");
+      m_autoRefreshCheckBox->SetValue(true);
+      toolbarSizer->Add(m_autoRefreshCheckBox, 0,
+                        wxALIGN_CENTER_VERTICAL | wxRIGHT, 10);
 
-      // Create button sizer
-      wxBoxSizer *buttonSizer = new wxBoxSizer(wxHORIZONTAL);
+      wxButton *refreshButton = new wxButton(this, ID_PROC_REFRESH, "Refresh");
+      toolbarSizer->Add(refreshButton, 0, wxALIGN_CENTER_VERTICAL | wxRIGHT, 5);
 
-      wxButton *refreshButton = new wxButton(this, wxID_ANY, "Refresh");
-      buttonSizer->Add(refreshButton, 0, wxALL, 5);
+      m_endProcessButton =
+          new wxButton(this, ID_PROC_END_PROCESS, "End Process");
+      toolbarSizer->Add(m_endProcessButton, 0, wxALIGN_CENTER_VERTICAL, 0);
 
-      m_totalProcessesButton =
-          new wxButton(this, wxID_ANY, "Total Processes: 0");
-      buttonSizer->Add(m_totalProcessesButton, 0, wxALL, 5);
+      mainSizer->Add(toolbarSizer, 0, wxEXPAND | wxALL, 6);
 
-      mainSizer->Add(buttonSizer, 0, wxALIGN_RIGHT);
+      // --- Main List Control ---
+      m_listCtrl =
+          new wxListCtrl(this, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                         wxLC_REPORT | wxLC_SINGLE_SEL | wxBORDER_THEME);
+
+      m_imageList = new wxImageList(24, 24, true);
+      m_listCtrl->AssignImageList(m_imageList, wxIMAGE_LIST_SMALL);
+      ProcessIconManager::Get().Initialize(m_imageList);
+
+      m_listCtrl->InsertColumn(0, "Process Name", wxLIST_FORMAT_LEFT, 220);
+      m_listCtrl->InsertColumn(1, "PID", wxLIST_FORMAT_RIGHT, 80);
+      m_listCtrl->InsertColumn(2, "User", wxLIST_FORMAT_LEFT, 95);
+      m_listCtrl->InsertColumn(3, "CPU %", wxLIST_FORMAT_RIGHT, 80);
+      m_listCtrl->InsertColumn(4, "RAM (RSS)", wxLIST_FORMAT_RIGHT, 105);
+      m_listCtrl->InsertColumn(5, "RAM %", wxLIST_FORMAT_RIGHT, 80);
+      m_listCtrl->InsertColumn(6, "Time", wxLIST_FORMAT_RIGHT, 90);
+      m_listCtrl->InsertColumn(7, "Command Line", wxLIST_FORMAT_LEFT, 360);
+
+      mainSizer->Add(m_listCtrl, 1, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 6);
+
+      // --- Status / Summary Bar ---
+      wxBoxSizer *summarySizer = new wxBoxSizer(wxHORIZONTAL);
+      m_summaryText = new wxStaticText(this, wxID_ANY, "Loading processes...");
+      summarySizer->Add(m_summaryText, 1,
+                        wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT | wxBOTTOM,
+                        6);
+      mainSizer->Add(summarySizer, 0, wxEXPAND);
 
       SetSizer(mainSizer);
 
       // Bind events
-      refreshButton->Bind(wxEVT_BUTTON, &ResourcesInfoPage::OnRefresh, this);
-      m_totalProcessesButton->Bind(
-          wxEVT_BUTTON, &ResourcesInfoPage::OnShowTotalProcesses, this);
+      m_searchCtrl->Bind(wxEVT_TEXT, &ResourcesInfoPage::OnSearchTextChange,
+                         this);
+      m_searchCtrl->Bind(wxEVT_SEARCHCTRL_CANCEL_BTN,
+                         &ResourcesInfoPage::OnSearchCancel, this);
+      m_autoRefreshCheckBox->Bind(
+          wxEVT_CHECKBOX, &ResourcesInfoPage::OnAutoRefreshToggle, this);
+      refreshButton->Bind(wxEVT_BUTTON, &ResourcesInfoPage::OnRefreshBtn, this);
+      m_endProcessButton->Bind(wxEVT_BUTTON,
+                               &ResourcesInfoPage::OnEndProcessBtn, this);
+
+      m_listCtrl->Bind(wxEVT_LIST_COL_CLICK, &ResourcesInfoPage::OnColClick,
+                       this);
+      m_listCtrl->Bind(wxEVT_LIST_ITEM_RIGHT_CLICK,
+                       &ResourcesInfoPage::OnItemRightClick, this);
       m_listCtrl->Bind(wxEVT_LIST_ITEM_ACTIVATED,
                        &ResourcesInfoPage::OnItemActivated, this);
+      m_listCtrl->Bind(wxEVT_CONTEXT_MENU, &ResourcesInfoPage::OnContextMenu,
+                       this);
 
-      RefreshProcessList();
+      Bind(wxEVT_TIMER, &ResourcesInfoPage::OnTimer, this, ID_PROC_TIMER);
+
+      // Context menu event binds
+      Bind(wxEVT_MENU, &ResourcesInfoPage::OnMenuSigTerm, this,
+           ID_PROC_SIGTERM);
+      Bind(wxEVT_MENU, &ResourcesInfoPage::OnMenuSigKill, this,
+           ID_PROC_SIGKILL);
+      Bind(wxEVT_MENU, &ResourcesInfoPage::OnMenuCopyPid, this,
+           ID_PROC_COPY_PID);
+      Bind(wxEVT_MENU, &ResourcesInfoPage::OnMenuCopyName, this,
+           ID_PROC_COPY_NAME);
+      Bind(wxEVT_MENU, &ResourcesInfoPage::OnMenuCopyCmd, this,
+           ID_PROC_COPY_CMD);
+      Bind(wxEVT_MENU, &ResourcesInfoPage::OnMenuDetails, this,
+           ID_PROC_DETAILS);
+
+      // Load initial processes
+      RefreshProcessList(false);
+
+      // Start auto-refresh timer (3s)
+      m_refreshTimer.Start(3000);
+    }
+
+    ~ResourcesInfoPage() {
+      if (m_refreshTimer.IsRunning()) {
+        m_refreshTimer.Stop();
+      }
     }
 
   private:
+    wxSearchCtrl *m_searchCtrl;
+    wxCheckBox *m_autoRefreshCheckBox;
+    wxButton *m_endProcessButton;
     wxListCtrl *m_listCtrl;
-    wxButton *m_totalProcessesButton;
-    std::vector<ProcessInfo> m_processes;
+    wxImageList *m_imageList;
+    wxStaticText *m_summaryText;
+    wxTimer m_refreshTimer;
 
-    wxString ExtractProcessName(const wxString &command) {
-      wxString name = command;
+    std::vector<ProcessInfo> m_allProcesses;
+    std::vector<ProcessInfo> m_filteredProcesses;
 
-      // Remove leading whitespace
-      name.Trim(false);
+    int m_sortColumn;
+    bool m_sortAscending;
+    wxString m_filterText;
+    long m_selectedPid;
 
-      // Check if it's a kernel process (enclosed in square brackets)
-      if (name.StartsWith("[") && name.Contains("]")) {
-        size_t endBracket = name.Find("]");
-        if (endBracket != wxString::npos) {
-          return name.Left(endBracket + 1);
+    static wxString FormatBytesFromKiB(long long kib) {
+      if (kib < 1024) {
+        return wxString::Format("%lld KiB", kib);
+      } else if (kib < 1024 * 1024) {
+        return wxString::Format("%.1f MB", static_cast<double>(kib) / 1024.0);
+      } else {
+        return wxString::Format("%.2f GiB",
+                                static_cast<double>(kib) / (1024.0 * 1024.0));
+      }
+    }
+
+    wxString ExtractProcessName(const wxString &comm, const wxString &command) {
+      wxString name = comm;
+      name.Trim(true).Trim(false);
+
+      if (name.IsEmpty() || name == command) {
+        name = command;
+        name.Trim(false);
+        if (name.StartsWith("[") && name.Contains("]")) {
+          size_t endBracket = name.Find("]");
+          if (endBracket != wxString::npos) {
+            return name.Left(endBracket + 1);
+          }
+        }
+        size_t spacePos = name.Find(' ');
+        if (spacePos != wxString::npos) {
+          name = name.Left(spacePos);
+        }
+        size_t lastSlash = name.Find('/', true);
+        if (lastSlash != wxString::npos) {
+          name = name.Mid(lastSlash + 1);
         }
       }
-
-      // For normal processes, extract the base name of the executable
-      size_t spacePos = name.Find(' ');
-      if (spacePos != wxString::npos) {
-        name = name.Left(spacePos);
-      }
-
-      // Remove any leading directory path
-      size_t lastSlash = name.Find('/', true);
-      if (lastSlash != wxString::npos) {
-        name = name.Mid(lastSlash + 1);
-      }
-
       return name;
     }
 
-    void RefreshProcessList() {
-      m_listCtrl->DeleteAllItems();
-      m_processes.clear();
+    void RefreshProcessList(bool preserveSelection = true) {
+      if (preserveSelection) {
+        long selIndex =
+            m_listCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+        if (selIndex != -1 &&
+            selIndex < static_cast<long>(m_filteredProcesses.size())) {
+          m_selectedPid = m_filteredProcesses[selIndex].pid;
+        } else {
+          m_selectedPid = -1;
+        }
+      }
+
+      m_allProcesses.clear();
 
       wxArrayString output;
-      wxExecute("ps aux --sort=-pcpu", output);
+      wxExecute("ps -eo pid,user,pcpu,pmem,rss,time,comm,args --sort=-pcpu",
+                output, wxEXEC_SYNC | wxEXEC_NODISABLE);
 
       for (size_t i = 1; i < output.GetCount(); ++i) {
         wxString line = output[i];
-
-        // Split the line into fields
         wxStringTokenizer tokenizer(line, " ", wxTOKEN_STRTOK);
         wxArrayString fields;
         while (tokenizer.HasMoreTokens()) {
           fields.Add(tokenizer.GetNextToken());
         }
 
-        if (fields.size() >= 11) {
+        if (fields.size() >= 7) {
           ProcessInfo info;
-          info.user = fields[0];
-          info.pid = wxAtol(fields[1]);
-          info.cpu = fields[2] + "%";
-          info.ram = fields[3] + "%";
-          info.time = fields[9];
+          info.pid = wxAtol(fields[0]);
+          info.user = fields[1];
 
-          // Combine all remaining fields for the command
-          wxArrayString commandParts;
-          std::copy(fields.begin() + 10, fields.end(),
-                    std::back_inserter(commandParts));
-          info.command = wxJoin(commandParts, ' ');
+          double cpu = 0.0;
+          fields[2].ToDouble(&cpu);
+          info.cpuVal = cpu;
+          info.cpuFormatted = wxString::Format("%.1f%%", cpu);
 
-          // Extract the process name from the command
-          info.name = ExtractProcessName(info.command);
+          double ramPerc = 0.0;
+          fields[3].ToDouble(&ramPerc);
+          info.ramPercentVal = ramPerc;
+          info.ramPercentFormatted = wxString::Format("%.1f%%", ramPerc);
 
-          m_processes.push_back(info);
+          long long rss = 0;
+          fields[4].ToLongLong(&rss);
+          info.rssKiB = rss;
+          info.ramFormatted = FormatBytesFromKiB(rss);
 
-          long itemIndex = m_listCtrl->InsertItem(
-              m_listCtrl->GetItemCount(), wxString::Format("%ld", info.pid));
-          m_listCtrl->SetItem(itemIndex, 1, info.user);
-          m_listCtrl->SetItem(itemIndex, 2, info.name);
-          m_listCtrl->SetItem(itemIndex, 3, info.cpu);
-          m_listCtrl->SetItem(itemIndex, 4, info.ram);
-          m_listCtrl->SetItem(itemIndex, 5, info.time);
-          m_listCtrl->SetItem(itemIndex, 6, info.command);
+          info.time = fields[5];
+          wxString comm = fields[6];
+
+          if (fields.size() > 7) {
+            wxArrayString cmdParts;
+            for (size_t k = 7; k < fields.size(); ++k) {
+              cmdParts.Add(fields[k]);
+            }
+            info.command = wxJoin(cmdParts, ' ');
+          } else {
+            info.command = comm;
+          }
+
+          info.name = ExtractProcessName(comm, info.command);
+          info.iconIndex =
+              ProcessIconManager::Get().GetIconIndex(info.name, info.command);
+
+          m_allProcesses.push_back(info);
         }
       }
 
-      for (int i = 0; i < m_listCtrl->GetColumnCount(); ++i) {
-        m_listCtrl->SetColumnWidth(i, wxLIST_AUTOSIZE_USEHEADER);
+      FilterAndPopulateList();
+    }
+
+    void FilterAndPopulateList() {
+      m_filteredProcesses.clear();
+      wxString query = m_filterText.Lower().Trim();
+
+      long long totalRssKiB = 0;
+      for (const auto &proc : m_allProcesses) {
+        totalRssKiB += proc.rssKiB;
+        if (query.IsEmpty()) {
+          m_filteredProcesses.push_back(proc);
+        } else {
+          wxString pidStr = wxString::Format("%ld", proc.pid);
+          if (proc.name.Lower().Contains(query) ||
+              proc.user.Lower().Contains(query) || pidStr.Contains(query) ||
+              proc.command.Lower().Contains(query)) {
+            m_filteredProcesses.push_back(proc);
+          }
+        }
       }
 
-      UpdateTotalProcessesCount();
+      SortProcesses();
+
+      m_listCtrl->Freeze();
+      m_listCtrl->DeleteAllItems();
+
+      long restoredIndex = -1;
+      for (size_t i = 0; i < m_filteredProcesses.size(); ++i) {
+        const auto &proc = m_filteredProcesses[i];
+        long itemIdx = m_listCtrl->InsertItem(static_cast<long>(i), proc.name,
+                                              proc.iconIndex);
+        m_listCtrl->SetItem(itemIdx, 1, wxString::Format("%ld", proc.pid));
+        m_listCtrl->SetItem(itemIdx, 2, proc.user);
+        m_listCtrl->SetItem(itemIdx, 3, proc.cpuFormatted);
+        m_listCtrl->SetItem(itemIdx, 4, proc.ramFormatted);
+        m_listCtrl->SetItem(itemIdx, 5, proc.ramPercentFormatted);
+        m_listCtrl->SetItem(itemIdx, 6, proc.time);
+        m_listCtrl->SetItem(itemIdx, 7, proc.command);
+
+        if (proc.pid == m_selectedPid) {
+          restoredIndex = itemIdx;
+        }
+      }
+
+      if (restoredIndex != -1) {
+        m_listCtrl->SetItemState(restoredIndex,
+                                 wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED,
+                                 wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED);
+        m_listCtrl->EnsureVisible(restoredIndex);
+      }
+
+      m_listCtrl->Thaw();
+
+      // Column sort name string
+      static const char *colNames[] = {"Name",      "PID",   "User", "CPU %",
+                                       "RAM (RSS)", "RAM %", "Time", "Command"};
+      wxString sortName = (m_sortColumn >= 0 && m_sortColumn < 8)
+                              ? colNames[m_sortColumn]
+                              : "CPU %";
+      wxString sortOrder = m_sortAscending ? "▲ Asc" : "▼ Desc";
+
+      m_summaryText->SetLabel(wxString::Format(
+          "Processes: %zu total (%zu displayed)  |  Total Process RAM: %s  |  "
+          "Sorted by: %s %s",
+          m_allProcesses.size(), m_filteredProcesses.size(),
+          FormatBytesFromKiB(totalRssKiB), sortName, sortOrder));
     }
 
-    void UpdateTotalProcessesCount() {
-      m_totalProcessesButton->SetLabel(
-          wxString::Format("Total Processes: %zu", m_processes.size()));
+    void SortProcesses() {
+      std::sort(m_filteredProcesses.begin(), m_filteredProcesses.end(),
+                [this](const ProcessInfo &a, const ProcessInfo &b) {
+                  if (m_sortAscending) {
+                    switch (m_sortColumn) {
+                    case 0:
+                      return a.name.CmpNoCase(b.name) < 0;
+                    case 1:
+                      return a.pid < b.pid;
+                    case 2:
+                      return a.user.CmpNoCase(b.user) < 0;
+                    case 3:
+                      return a.cpuVal < b.cpuVal;
+                    case 4:
+                      return a.rssKiB < b.rssKiB;
+                    case 5:
+                      return a.ramPercentVal < b.ramPercentVal;
+                    case 6:
+                      return a.time < b.time;
+                    case 7:
+                      return a.command.CmpNoCase(b.command) < 0;
+                    default:
+                      return a.pid < b.pid;
+                    }
+                  } else {
+                    switch (m_sortColumn) {
+                    case 0:
+                      return a.name.CmpNoCase(b.name) > 0;
+                    case 1:
+                      return a.pid > b.pid;
+                    case 2:
+                      return a.user.CmpNoCase(b.user) > 0;
+                    case 3:
+                      return a.cpuVal > b.cpuVal;
+                    case 4:
+                      return a.rssKiB > b.rssKiB;
+                    case 5:
+                      return a.ramPercentVal > b.ramPercentVal;
+                    case 6:
+                      return a.time > b.time;
+                    case 7:
+                      return a.command.CmpNoCase(b.command) > 0;
+                    default:
+                      return a.pid > b.pid;
+                    }
+                  }
+                });
     }
 
-    void OnRefresh(wxCommandEvent &event) { RefreshProcessList(); }
+    void OnSearchTextChange(wxCommandEvent &event) {
+      m_filterText = event.GetString();
+      FilterAndPopulateList();
+    }
 
-    void OnShowTotalProcesses(wxCommandEvent &event) {
-      wxMessageBox(wxString::Format("Total number of processes: %zu",
-                                    m_processes.size()),
-                   "Process Count", wxOK | wxICON_INFORMATION);
+    void OnSearchCancel(wxCommandEvent &) {
+      m_searchCtrl->SetValue("");
+      m_filterText = "";
+      FilterAndPopulateList();
+    }
+
+    void OnAutoRefreshToggle(wxCommandEvent &) {
+      if (m_autoRefreshCheckBox->IsChecked()) {
+        if (!m_refreshTimer.IsRunning())
+          m_refreshTimer.Start(3000);
+      } else {
+        if (m_refreshTimer.IsRunning())
+          m_refreshTimer.Stop();
+      }
+    }
+
+    void OnRefreshBtn(wxCommandEvent &) { RefreshProcessList(true); }
+
+    void OnTimer(wxTimerEvent &) {
+      if (m_autoRefreshCheckBox->IsChecked()) {
+        RefreshProcessList(true);
+      }
+    }
+
+    void OnColClick(wxListEvent &event) {
+      int col = event.GetColumn();
+      if (col == m_sortColumn) {
+        m_sortAscending = !m_sortAscending;
+      } else {
+        m_sortColumn = col;
+        m_sortAscending = (col == 0 || col == 2 || col == 7);
+      }
+      FilterAndPopulateList();
+    }
+
+    long GetSelectedPid() {
+      long item =
+          m_listCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+      if (item != -1 && item < static_cast<long>(m_filteredProcesses.size())) {
+        return m_filteredProcesses[item].pid;
+      }
+      return -1;
+    }
+
+    std::optional<ProcessInfo> GetSelectedProcessInfo() {
+      long item =
+          m_listCtrl->GetNextItem(-1, wxLIST_NEXT_ALL, wxLIST_STATE_SELECTED);
+      if (item != -1 && item < static_cast<long>(m_filteredProcesses.size())) {
+        return m_filteredProcesses[item];
+      }
+      return std::nullopt;
+    }
+
+    void OnEndProcessBtn(wxCommandEvent &) {
+      auto infoOpt = GetSelectedProcessInfo();
+      if (!infoOpt.has_value()) {
+        wxMessageBox("Please select a process from the list first.",
+                     "No Process Selected", wxOK | wxICON_INFORMATION, this);
+        return;
+      }
+
+      const auto &info = infoOpt.value();
+      int ans = wxMessageBox(
+          wxString::Format("Terminate process '%s' (PID: %ld)?", info.name,
+                           info.pid),
+          "Confirm Terminate", wxYES_NO | wxNO_DEFAULT | wxICON_WARNING, this);
+
+      if (ans == wxYES) {
+        wxKill(info.pid, wxSIGTERM);
+        RefreshProcessList(false);
+      }
     }
 
     void OnItemActivated(wxListEvent &event) {
-      long itemIndex = event.GetIndex();
-      wxButton *killButton =
-          reinterpret_cast<wxButton *>(m_listCtrl->GetItemData(itemIndex));
-      if (killButton) {
-        killButton->Show();
+      long idx = event.GetIndex();
+      if (idx >= 0 && idx < static_cast<long>(m_filteredProcesses.size())) {
+        ShowProcessDetails(m_filteredProcesses[idx]);
       }
     }
 
-    void OnKillProcess(wxCommandEvent &event) {
-      wxButton *button = dynamic_cast<wxButton *>(event.GetEventObject());
-      if (button) {
-        wxVariant *variant =
-            reinterpret_cast<wxVariant *>(button->GetClientData());
-        wxLongLong pid = variant->GetLongLong();
-        wxKill(pid.ToLong(), wxSIGTERM, NULL, wxKILL_CHILDREN);
-        RefreshProcessList();
+    void OnItemRightClick(wxListEvent &event) {
+      long idx = event.GetIndex();
+      if (idx >= 0) {
+        m_listCtrl->SetItemState(idx,
+                                 wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED,
+                                 wxLIST_STATE_SELECTED | wxLIST_STATE_FOCUSED);
+        ShowContextMenu();
       }
+    }
+
+    void OnContextMenu(wxContextMenuEvent &) {
+      if (GetSelectedPid() != -1) {
+        ShowContextMenu();
+      }
+    }
+
+    void ShowContextMenu() {
+      auto infoOpt = GetSelectedProcessInfo();
+      if (!infoOpt.has_value())
+        return;
+
+      wxMenu menu;
+      menu.Append(ID_PROC_SIGTERM,
+                  wxString::Format("&Terminate '%s' (SIGTERM)", infoOpt->name));
+      menu.Append(
+          ID_PROC_SIGKILL,
+          wxString::Format("&Force Kill '%s' (SIGKILL)", infoOpt->name));
+      menu.AppendSeparator();
+      menu.Append(ID_PROC_COPY_PID, "Copy &PID");
+      menu.Append(ID_PROC_COPY_NAME, "Copy Process &Name");
+      menu.Append(ID_PROC_COPY_CMD, "Copy Full &Command");
+      menu.AppendSeparator();
+      menu.Append(ID_PROC_DETAILS, "&Process Details...\tCtrl-D");
+
+      PopupMenu(&menu);
+    }
+
+    void OnMenuSigTerm(wxCommandEvent &) {
+      auto info = GetSelectedProcessInfo();
+      if (info.has_value()) {
+        wxKill(info->pid, wxSIGTERM);
+        RefreshProcessList(false);
+      }
+    }
+
+    void OnMenuSigKill(wxCommandEvent &) {
+      auto info = GetSelectedProcessInfo();
+      if (info.has_value()) {
+        int ans = wxMessageBox(
+            wxString::Format("Force kill (SIGKILL) process '%s' (PID: %ld)?",
+                             info->name, info->pid),
+            "Force Kill Confirmation",
+            wxYES_NO | wxNO_DEFAULT | wxICON_EXCLAMATION, this);
+        if (ans == wxYES) {
+          wxKill(info->pid, wxSIGKILL);
+          RefreshProcessList(false);
+        }
+      }
+    }
+
+    void OnMenuCopyPid(wxCommandEvent &) {
+      auto info = GetSelectedProcessInfo();
+      if (info.has_value() && wxTheClipboard->Open()) {
+        wxTheClipboard->SetData(
+            new wxTextDataObject(wxString::Format("%ld", info->pid)));
+        wxTheClipboard->Close();
+      }
+    }
+
+    void OnMenuCopyName(wxCommandEvent &) {
+      auto info = GetSelectedProcessInfo();
+      if (info.has_value() && wxTheClipboard->Open()) {
+        wxTheClipboard->SetData(new wxTextDataObject(info->name));
+        wxTheClipboard->Close();
+      }
+    }
+
+    void OnMenuCopyCmd(wxCommandEvent &) {
+      auto info = GetSelectedProcessInfo();
+      if (info.has_value() && wxTheClipboard->Open()) {
+        wxTheClipboard->SetData(new wxTextDataObject(info->command));
+        wxTheClipboard->Close();
+      }
+    }
+
+    void OnMenuDetails(wxCommandEvent &) {
+      auto info = GetSelectedProcessInfo();
+      if (info.has_value()) {
+        ShowProcessDetails(info.value());
+      }
+    }
+
+    void ShowProcessDetails(const ProcessInfo &info) {
+      long pid = info.pid;
+      wxDialog dlg(
+          this, wxID_ANY,
+          wxString::Format("Process Details - %s (PID: %ld)", info.name, pid),
+          wxDefaultPosition, wxSize(580, 500),
+          wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
+      wxBoxSizer *dlgSizer = new wxBoxSizer(wxVERTICAL);
+
+      wxTextCtrl *detailsText = new wxTextCtrl(
+          &dlg, wxID_ANY, "", wxDefaultPosition, wxDefaultSize,
+          wxTE_MULTILINE | wxTE_READONLY | wxTE_RICH2 | wxHSCROLL);
+
+      wxFont monoFont(wxFontInfo(10).Family(wxFONTFAMILY_TELETYPE));
+      detailsText->SetFont(monoFont);
+
+      wxString content;
+      content += "==================================================\n";
+      content += wxString::Format("  PROCESS: %s (PID: %ld)\n", info.name, pid);
+      content += "==================================================\n\n";
+
+      content += wxString::Format("User:          %s\n", info.user);
+      content += wxString::Format("CPU Usage:     %s\n", info.cpuFormatted);
+      content += wxString::Format("RAM (RSS):     %s (%s)\n", info.ramFormatted,
+                                  info.ramPercentFormatted);
+      content += wxString::Format("CPU Time:      %s\n\n", info.time);
+
+      char exeBuf[PATH_MAX];
+      ssize_t exeLen = readlink(wxString::Format("/proc/%ld/exe", pid).c_str(),
+                                exeBuf, sizeof(exeBuf) - 1);
+      if (exeLen > 0) {
+        exeBuf[exeLen] = '\0';
+        content += wxString::Format("Binary Path:   %s\n", exeBuf);
+      }
+
+      char cwdBuf[PATH_MAX];
+      ssize_t cwdLen = readlink(wxString::Format("/proc/%ld/cwd", pid).c_str(),
+                                cwdBuf, sizeof(cwdBuf) - 1);
+      if (cwdLen > 0) {
+        cwdBuf[cwdLen] = '\0';
+        content += wxString::Format("Working Dir:   %s\n\n", cwdBuf);
+      }
+
+      content += "Status Metrics (/proc/[pid]/status):\n";
+      content += "------------------------------------\n";
+      wxTextFile statusFile;
+      if (statusFile.Open(wxString::Format("/proc/%ld/status", pid))) {
+        for (size_t i = 0; i < statusFile.GetLineCount(); ++i) {
+          wxString line = statusFile.GetLine(i);
+          if (line.StartsWith("State:") || line.StartsWith("Tgid:") ||
+              line.StartsWith("PPid:") || line.StartsWith("Uid:") ||
+              line.StartsWith("Gid:") || line.StartsWith("Threads:") ||
+              line.StartsWith("VmPeak:") || line.StartsWith("VmSize:") ||
+              line.StartsWith("VmRSS:") || line.StartsWith("VmData:") ||
+              line.StartsWith("VmStk:") || line.StartsWith("VmExe:") ||
+              line.StartsWith("VmLib:")) {
+            content += "  " + line + "\n";
+          }
+        }
+        statusFile.Close();
+      }
+
+      content += wxString::Format(
+          "\nFull Command Line:\n------------------\n%s\n", info.command);
+
+      detailsText->SetValue(content);
+      dlgSizer->Add(detailsText, 1, wxEXPAND | wxALL, 10);
+
+      wxStdDialogButtonSizer *btnSizer = dlg.CreateStdDialogButtonSizer(wxOK);
+      dlgSizer->Add(btnSizer, 0, wxALIGN_RIGHT | wxBOTTOM | wxRIGHT, 10);
+
+      dlg.SetSizer(dlgSizer);
+      dlg.CenterOnParent();
+      dlg.ShowModal();
     }
   };
 
@@ -1277,6 +2059,14 @@ bool MyApp::OnInit() {
   wxPanel *audioDevicesPane = new wxPanel(miscInfoPage, wxID_ANY);
   wxPanel *motherboardInfoPane = new wxPanel(miscInfoPage, wxID_ANY);
   wxPanel *cpuInfoPane = new wxPanel(miscInfoPage, wxID_ANY);
+
+  // Ensure sensible minimum size so all panes remain accessible
+  networkPane->SetMinSize(wxSize(220, 260));
+  displayInfoPane->SetMinSize(wxSize(220, 260));
+  storageDevicesPane->SetMinSize(wxSize(220, 260));
+  audioDevicesPane->SetMinSize(wxSize(220, 260));
+  motherboardInfoPane->SetMinSize(wxSize(220, 260));
+  cpuInfoPane->SetMinSize(wxSize(220, 260));
 
   // Add panes to the top row sizer
   miscTopRowSizer->Add(networkPane, 1, wxEXPAND | wxALL, 5);
@@ -1534,406 +2324,420 @@ bool MyApp::OnInit() {
 
   // ----------------- DISPLAy INFORMATION -------------
   // ----------------- DISPLAY INFORMATION -------------
-    wxStaticBoxSizer *displaySizer =
-        new wxStaticBoxSizer(wxVERTICAL, displayInfoPane, "DISPLAY INFORMATION");
+  wxStaticBoxSizer *displaySizer =
+      new wxStaticBoxSizer(wxVERTICAL, displayInfoPane, "DISPLAY INFORMATION");
 
-    class DisplayInfoPanel : public wxPanel {
-    public:
-      DisplayInfoPanel(wxWindow *parent) : wxPanel(parent) {
-        wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
-        SetSizer(mainSizer);
+  class DisplayInfoPanel : public wxPanel {
+  public:
+    DisplayInfoPanel(wxWindow *parent) : wxPanel(parent) {
+      wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
+      SetSizer(mainSizer);
 
-        CalculateBaseFontSize();
-        CollectSystemInfo();
-        CreateInfoDisplay();
+      CalculateBaseFontSize();
+      CollectSystemInfo();
+      CreateInfoDisplay();
 
-        Bind(wxEVT_SIZE, &DisplayInfoPanel::OnSize, this);
-      }
+      Bind(wxEVT_SIZE, &DisplayInfoPanel::OnSize, this);
+    }
 
-    private:
-      struct SystemInfo {
-        std::optional<wxString> desktopEnv;
-        unsigned                displayCount = 0;
-        std::optional<wxString> resolution;
-        std::optional<wxString> refreshRate;
-        std::optional<int>      colorDepth;
-        std::optional<int>      brightness;
-        std::optional<wxString> manufacturer;
-        std::optional<wxString> model;
-        std::optional<wxString> screenSizeInches;
-      } m_systemInfo;
+  private:
+    struct SystemInfo {
+      std::optional<wxString> desktopEnv;
+      unsigned displayCount = 0;
+      std::optional<wxString> resolution;
+      std::optional<wxString> refreshRate;
+      std::optional<int> colorDepth;
+      std::optional<int> brightness;
+      std::optional<wxString> manufacturer;
+      std::optional<wxString> model;
+      std::optional<wxString> screenSizeInches;
+    } m_systemInfo;
 
-      struct EdidInfo {
-        wxString                manufacturer;
-        wxString                model;
-        std::optional<wxString> screenSizeInches;
-        std::optional<wxString> refreshRate;
-      };
-
-      int m_baseFontSize = 10;
-      std::vector<wxStaticText *> m_infoLabels;
-
-      // ────────────────────────────────────────────────────────────────
-      void CalculateBaseFontSize() {
-        wxDisplay display(0u);
-        wxSize ppi = display.GetPPI();
-        m_baseFontSize = wxMax(10, wxMin(ppi.GetWidth() / 10, 16));
-        if (ppi.GetWidth() > 120)
-          m_baseFontSize += 2;
-      }
-
-      void OnSize([[maybe_unused]] wxSizeEvent &event) {
-        UpdateFontSizes();
-        event.Skip();
-      }
-
-      void UpdateFontSizes() {
-        int windowWidth = GetSize().GetWidth();
-        int dynamicSize = wxMax(m_baseFontSize - 2,
-                                wxMin(m_baseFontSize + 2, windowWidth / 50));
-        wxFont font = GetFont();
-        font.SetPointSize(dynamicSize);
-        for (auto *label : m_infoLabels)
-          label->SetFont(font);
-        Layout();
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      void CollectSystemInfo() {
-        m_systemInfo.desktopEnv = GetDesktopEnvironment();
-
-        try {
-          m_systemInfo.displayCount = wxDisplay::GetCount();
-        } catch (...) {
-          m_systemInfo.displayCount = 0;
-        }
-
-        // DRM sysfs — resolution, works on all DEs and display servers
-        ParseDrmSysfs();
-
-        // Fallback resolution from wxDisplay
-        if (!m_systemInfo.resolution && m_systemInfo.displayCount > 0) {
-          wxDisplay display(0u);
-          wxRect geom = display.GetGeometry();
-          m_systemInfo.resolution =
-              wxString::Format("%dx%d", geom.width, geom.height);
-        }
-
-        // Color depth from wxDisplay
-        if (m_systemInfo.displayCount > 0) {
-          try {
-            wxDisplay display(0u);
-            wxVideoMode mode = display.GetCurrentMode();
-            if (mode.GetDepth() > 0)
-              m_systemInfo.colorDepth = mode.GetDepth();
-          } catch (...) {}
-        }
-
-        // Brightness from sysfs backlight
-        m_systemInfo.brightness = GetBrightness();
-
-        // EDID — physical size, refresh rate, manufacturer, model
-        // Pure DRM/sysfs — no DE dependency, works on X11, Wayland,
-        // GNOME, KDE, Cinnamon, Pantheon, XFCE, anything
-        auto edidInfo = GetEdidInfo();
-        if (edidInfo) {
-          if (!edidInfo->manufacturer.IsEmpty())
-            m_systemInfo.manufacturer = edidInfo->manufacturer;
-          if (!edidInfo->model.IsEmpty())
-            m_systemInfo.model = edidInfo->model;
-          if (edidInfo->screenSizeInches.has_value())
-            m_systemInfo.screenSizeInches = edidInfo->screenSizeInches;
-          if (edidInfo->refreshRate.has_value())
-            m_systemInfo.refreshRate = edidInfo->refreshRate;
-        }
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      // Read resolution from DRM sysfs connector modes file.
-      // Works on X11, Wayland, any DE — no xrandr needed.
-      void ParseDrmSysfs() {
-        namespace fs = std::filesystem;
-        const fs::path drm("/sys/class/drm");
-        if (!fs::exists(drm)) return;
-
-        // Priority: eDP (internal panel) > HDMI > DP > anything else
-        auto priority = [](const std::string &name) -> int {
-          if (name.find("eDP")  != std::string::npos) return 0;
-          if (name.find("HDMI") != std::string::npos) return 1;
-          if (name.find("DP")   != std::string::npos) return 2;
-          return 3;
-        };
-
-        struct Connector { fs::path path; int pri; };
-        std::vector<Connector> connected;
-
-        std::error_code ec;
-        for (const auto &entry : fs::directory_iterator(drm, ec)) {
-          std::string name = entry.path().filename().string();
-          // Connector dirs always contain a hyphen e.g. card1-eDP-1
-          if (name.find('-') == std::string::npos) continue;
-
-          fs::path statusFile = entry.path() / "status";
-          if (!fs::exists(statusFile, ec)) continue;
-
-          std::ifstream sf(statusFile);
-          std::string state;
-          if (std::getline(sf, state) && state == "connected")
-            connected.push_back({entry.path(), priority(name)});
-        }
-
-        if (connected.empty()) return;
-
-        std::sort(connected.begin(), connected.end(),
-                  [](const Connector &a, const Connector &b) {
-                    return a.pri < b.pri;
-                  });
-
-        // Use highest-priority connected connector
-        fs::path modesFile = connected[0].path / "modes";
-        if (fs::exists(modesFile, ec)) {
-          std::ifstream mf(modesFile);
-          std::string firstMode;
-          if (std::getline(mf, firstMode) && !firstMode.empty())
-            m_systemInfo.resolution = wxString::FromUTF8(firstMode);
-        }
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      std::optional<wxString> GetDesktopEnvironment() {
-        // Environment variables — most reliable across all DEs
-        for (const char *var :
-             {"XDG_CURRENT_DESKTOP", "DESKTOP_SESSION", "GDMSESSION"}) {
-          const char *val = std::getenv(var);
-          if (val && val[0] != '\0')
-            return wxString::FromUTF8(val);
-        }
-        // Fallback: read /etc/os-release directly (no shell pipe)
-        std::ifstream f("/etc/os-release");
-        std::string line;
-        while (std::getline(f, line)) {
-          if (line.rfind("PRETTY_NAME=", 0) == 0) {
-            std::string val = line.substr(12);
-            if (val.size() >= 2 && val.front() == '"')
-              val = val.substr(1, val.size() - 2);
-            return wxString::FromUTF8(val);
-          }
-        }
-        return std::nullopt;
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      std::optional<int> GetBrightness() {
-        namespace fs = std::filesystem;
-        const fs::path backlight("/sys/class/backlight");
-        if (!fs::exists(backlight)) return std::nullopt;
-
-        std::error_code ec;
-        for (const auto &entry : fs::directory_iterator(backlight, ec)) {
-          if (!entry.is_directory(ec)) continue;
-          fs::path cur = entry.path() / "brightness";
-          fs::path max = entry.path() / "max_brightness";
-          if (!fs::exists(cur, ec) || !fs::exists(max, ec)) continue;
-
-          std::ifstream fc(cur), fm(max);
-          long cv = 0, mv = 0;
-          if ((fc >> cv) && (fm >> mv) && mv > 0)
-            return static_cast<int>(
-                (static_cast<double>(cv) / mv) * 100.0);
-        }
-        return std::nullopt;
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      bool GetEdidFromDrm(std::vector<unsigned char> &edid_data) {
-        for (int i = 0; i < 8; ++i) {
-          std::string path = "/dev/dri/card" + std::to_string(i);
-          int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
-          if (fd < 0) continue;
-
-          drmModeRes *res = drmModeGetResources(fd);
-          if (!res) { close(fd); continue; }
-
-          bool found = false;
-          for (int j = 0; j < res->count_connectors && !found; ++j) {
-            drmModeConnector *conn =
-                drmModeGetConnector(fd, res->connectors[j]);
-            if (!conn) continue;
-
-            if (conn->connection == DRM_MODE_CONNECTED) {
-              for (int k = 0; k < conn->count_props && !found; ++k) {
-                drmModePropertyRes *prop =
-                    drmModeGetProperty(fd, conn->props[k]);
-                if (!prop) continue;
-
-                if (strcmp(prop->name, "EDID") == 0) {
-                  drmModePropertyBlobRes *blob =
-                      drmModeGetPropertyBlob(fd, conn->prop_values[k]);
-                  if (blob && blob->length >= 128) {
-                    edid_data.assign(
-                        static_cast<unsigned char *>(blob->data),
-                        static_cast<unsigned char *>(blob->data) +
-                            blob->length);
-                    found = true;
-                  }
-                  if (blob) drmModeFreePropertyBlob(blob);
-                }
-                drmModeFreeProperty(prop);
-              }
-            }
-            drmModeFreeConnector(conn);
-          }
-          drmModeFreeResources(res);
-          close(fd);
-          if (found) return true;
-        }
-        return false;
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      std::optional<EdidInfo> GetEdidInfo() {
-        std::vector<unsigned char> edid;
-        if (!GetEdidFromDrm(edid) || edid.size() < 128)
-          return std::nullopt;
-
-        // Validate EDID header magic
-        const unsigned char magic[8] =
-            {0x00,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0x00};
-        if (std::memcmp(edid.data(), magic, 8) != 0)
-          return std::nullopt;
-
-        EdidInfo info;
-
-        // Manufacturer ID — bytes 8-9, ISA PnP packed ASCII
-        char mfr[4] = {
-            static_cast<char>(((edid[8] >> 2) & 0x1F) + 'A' - 1),
-            static_cast<char>((((edid[8] & 0x03) << 3) |
-                                ((edid[9] >> 5) & 0x07)) + 'A' - 1),
-            static_cast<char>((edid[9] & 0x1F) + 'A' - 1),
-            '\0'
-        };
-        info.manufacturer = wxString::FromUTF8(mfr);
-
-        // Physical size — bytes 21-22 in cm → diagonal inches
-        int w_cm = edid[21];
-        int h_cm = edid[22];
-        if (w_cm > 0 && h_cm > 0) {
-          double w_mm = w_cm * 10.0;
-          double h_mm = h_cm * 10.0;
-          double diag = std::sqrt(w_mm * w_mm + h_mm * h_mm) / 25.4;
-          info.screenSizeInches = wxString::Format("%.1f\"", diag);
-        }
-
-        // Detailed timing descriptors — bytes 54-125, 4 × 18 bytes
-        for (int i = 54; i + 17 < 128; i += 18) {
-          uint16_t pixel_clock_raw =
-              static_cast<uint16_t>(edid[i]) |
-              (static_cast<uint16_t>(edid[i + 1]) << 8);
-
-          // Non-zero pixel clock → timing descriptor → compute refresh rate
-          if (pixel_clock_raw > 0 && !info.refreshRate.has_value()) {
-            uint32_t pixel_clock = pixel_clock_raw * 10000UL;
-
-            uint32_t h_active =
-                edid[i+2] | ((static_cast<uint32_t>(edid[i+4] >> 4)) << 8);
-            uint32_t h_blank =
-                edid[i+3] | ((static_cast<uint32_t>(edid[i+4] & 0x0F)) << 8);
-            uint32_t v_active =
-                edid[i+5] | ((static_cast<uint32_t>(edid[i+7] >> 4)) << 8);
-            uint32_t v_blank =
-                edid[i+6] | ((static_cast<uint32_t>(edid[i+7] & 0x0F)) << 8);
-
-            uint32_t h_total = h_active + h_blank;
-            uint32_t v_total = v_active + v_blank;
-
-            if (h_total > 0 && v_total > 0) {
-              double refresh =
-                  static_cast<double>(pixel_clock) /
-                  (static_cast<double>(h_total) *
-                   static_cast<double>(v_total));
-              info.refreshRate = wxString::Format("%.2f", refresh);
-            }
-          }
-
-          // Monitor name (0xFC) or text (0xFE) descriptor
-          if (edid[i]   == 0x00 && edid[i+1] == 0x00 &&
-              edid[i+2] == 0x00 && info.model.IsEmpty() &&
-              (edid[i+3] == 0xFC || edid[i+3] == 0xFE)) {
-            wxString name;
-            for (int j = i + 5; j < i + 18; ++j) {
-              if (edid[j] == 0x0A) break;
-              if (edid[j] >= 0x20 && edid[j] <= 0x7E)
-                name += static_cast<char>(edid[j]);
-            }
-            name = name.Trim();
-            if (!name.IsEmpty())
-              info.model = name;
-          }
-        }
-
-        return info;
-      }
-
-      // ────────────────────────────────────────────────────────────────
-      void CreateInfoDisplay() {
-        wxSizer *sizer = GetSizer();
-        wxFont boldFont = GetFont();
-        boldFont.MakeBold();
-        boldFont.SetPointSize(m_baseFontSize);
-
-        // Skips the row entirely if value is empty
-        auto AddInfoLine = [&](const wxString &label,
-                                const wxString &value) {
-          if (value.IsEmpty()) return;
-          wxBoxSizer *row = new wxBoxSizer(wxHORIZONTAL);
-          wxStaticText *key = new wxStaticText(this, wxID_ANY, label + ":");
-          key->SetFont(boldFont);
-          wxStaticText *val = new wxStaticText(this, wxID_ANY, value);
-          row->Add(key, 0, wxALL, 4);
-          row->Add(val, 1, wxALL, 4);
-          sizer->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT, 5);
-          m_infoLabels.push_back(key);
-          m_infoLabels.push_back(val);
-        };
-
-        if (m_systemInfo.desktopEnv)
-          AddInfoLine("Desktop",      *m_systemInfo.desktopEnv);
-
-        AddInfoLine("Displays",
-                    wxString::Format("%u", m_systemInfo.displayCount));
-
-        if (m_systemInfo.resolution)
-          AddInfoLine("Resolution",   *m_systemInfo.resolution);
-
-        if (m_systemInfo.screenSizeInches)
-          AddInfoLine("Screen Size",  *m_systemInfo.screenSizeInches);
-
-        if (m_systemInfo.refreshRate)
-          AddInfoLine("Refresh Rate", *m_systemInfo.refreshRate + " Hz");
-
-        if (m_systemInfo.colorDepth)
-          AddInfoLine("Color Depth",
-                      wxString::Format("%d bit", *m_systemInfo.colorDepth));
-
-        if (m_systemInfo.brightness)
-          AddInfoLine("Brightness",
-                      wxString::Format("%d%%", *m_systemInfo.brightness));
-
-        if (m_systemInfo.manufacturer)
-          AddInfoLine("Manufacturer", *m_systemInfo.manufacturer);
-
-        if (m_systemInfo.model && !m_systemInfo.model->IsEmpty())
-          AddInfoLine("Model",        *m_systemInfo.model);
-
-        UpdateFontSizes();
-      }
+    struct EdidInfo {
+      wxString manufacturer;
+      wxString model;
+      std::optional<wxString> screenSizeInches;
+      std::optional<wxString> refreshRate;
     };
 
-    // Add DISPLAY INFORMATION to the top center of page 3
-    DisplayInfoPanel *displayInfo = new DisplayInfoPanel(displayInfoPane);
-    displaySizer->Add(displayInfo, 1, wxEXPAND | wxALL, 10);
-    displayInfoPane->SetSizer(displaySizer);
-    displayInfoPane->Layout();
+    int m_baseFontSize = 10;
+    std::vector<wxStaticText *> m_infoLabels;
+
+    // ────────────────────────────────────────────────────────────────
+    void CalculateBaseFontSize() {
+      wxDisplay display(0u);
+      wxSize ppi = display.GetPPI();
+      m_baseFontSize = wxMax(10, wxMin(ppi.GetWidth() / 10, 16));
+      if (ppi.GetWidth() > 120)
+        m_baseFontSize += 2;
+    }
+
+    void OnSize([[maybe_unused]] wxSizeEvent &event) {
+      UpdateFontSizes();
+      event.Skip();
+    }
+
+    void UpdateFontSizes() {
+      int windowWidth = GetSize().GetWidth();
+      int dynamicSize = wxMax(m_baseFontSize - 2,
+                              wxMin(m_baseFontSize + 2, windowWidth / 50));
+      wxFont font = GetFont();
+      font.SetPointSize(dynamicSize);
+      for (auto *label : m_infoLabels)
+        label->SetFont(font);
+      Layout();
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    void CollectSystemInfo() {
+      m_systemInfo.desktopEnv = GetDesktopEnvironment();
+
+      try {
+        m_systemInfo.displayCount = wxDisplay::GetCount();
+      } catch (...) {
+        m_systemInfo.displayCount = 0;
+      }
+
+      // DRM sysfs — resolution, works on all DEs and display servers
+      ParseDrmSysfs();
+
+      // Fallback resolution from wxDisplay
+      if (!m_systemInfo.resolution && m_systemInfo.displayCount > 0) {
+        wxDisplay display(0u);
+        wxRect geom = display.GetGeometry();
+        m_systemInfo.resolution =
+            wxString::Format("%dx%d", geom.width, geom.height);
+      }
+
+      // Color depth from wxDisplay
+      if (m_systemInfo.displayCount > 0) {
+        try {
+          wxDisplay display(0u);
+          wxVideoMode mode = display.GetCurrentMode();
+          if (mode.GetDepth() > 0)
+            m_systemInfo.colorDepth = mode.GetDepth();
+        } catch (...) {
+        }
+      }
+
+      // Brightness from sysfs backlight
+      m_systemInfo.brightness = GetBrightness();
+
+      // EDID — physical size, refresh rate, manufacturer, model
+      // Pure DRM/sysfs — no DE dependency, works on X11, Wayland,
+      // GNOME, KDE, Cinnamon, Pantheon, XFCE, anything
+      auto edidInfo = GetEdidInfo();
+      if (edidInfo) {
+        if (!edidInfo->manufacturer.IsEmpty())
+          m_systemInfo.manufacturer = edidInfo->manufacturer;
+        if (!edidInfo->model.IsEmpty())
+          m_systemInfo.model = edidInfo->model;
+        if (edidInfo->screenSizeInches.has_value())
+          m_systemInfo.screenSizeInches = edidInfo->screenSizeInches;
+        if (edidInfo->refreshRate.has_value())
+          m_systemInfo.refreshRate = edidInfo->refreshRate;
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    // Read resolution from DRM sysfs connector modes file.
+    // Works on X11, Wayland, any DE — no xrandr needed.
+    void ParseDrmSysfs() {
+      namespace fs = std::filesystem;
+      const fs::path drm("/sys/class/drm");
+      if (!fs::exists(drm))
+        return;
+
+      // Priority: eDP (internal panel) > HDMI > DP > anything else
+      auto priority = [](const std::string &name) -> int {
+        if (name.find("eDP") != std::string::npos)
+          return 0;
+        if (name.find("HDMI") != std::string::npos)
+          return 1;
+        if (name.find("DP") != std::string::npos)
+          return 2;
+        return 3;
+      };
+
+      struct Connector {
+        fs::path path;
+        int pri;
+      };
+      std::vector<Connector> connected;
+
+      std::error_code ec;
+      for (const auto &entry : fs::directory_iterator(drm, ec)) {
+        std::string name = entry.path().filename().string();
+        // Connector dirs always contain a hyphen e.g. card1-eDP-1
+        if (name.find('-') == std::string::npos)
+          continue;
+
+        fs::path statusFile = entry.path() / "status";
+        if (!fs::exists(statusFile, ec))
+          continue;
+
+        std::ifstream sf(statusFile);
+        std::string state;
+        if (std::getline(sf, state) && state == "connected")
+          connected.push_back({entry.path(), priority(name)});
+      }
+
+      if (connected.empty())
+        return;
+
+      std::sort(
+          connected.begin(), connected.end(),
+          [](const Connector &a, const Connector &b) { return a.pri < b.pri; });
+
+      // Use highest-priority connected connector
+      fs::path modesFile = connected[0].path / "modes";
+      if (fs::exists(modesFile, ec)) {
+        std::ifstream mf(modesFile);
+        std::string firstMode;
+        if (std::getline(mf, firstMode) && !firstMode.empty())
+          m_systemInfo.resolution = wxString::FromUTF8(firstMode);
+      }
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    std::optional<wxString> GetDesktopEnvironment() {
+      // Environment variables — most reliable across all DEs
+      for (const char *var :
+           {"XDG_CURRENT_DESKTOP", "DESKTOP_SESSION", "GDMSESSION"}) {
+        const char *val = std::getenv(var);
+        if (val && val[0] != '\0')
+          return wxString::FromUTF8(val);
+      }
+      // Fallback: read /etc/os-release directly (no shell pipe)
+      std::ifstream f("/etc/os-release");
+      std::string line;
+      while (std::getline(f, line)) {
+        if (line.rfind("PRETTY_NAME=", 0) == 0) {
+          std::string val = line.substr(12);
+          if (val.size() >= 2 && val.front() == '"')
+            val = val.substr(1, val.size() - 2);
+          return wxString::FromUTF8(val);
+        }
+      }
+      return std::nullopt;
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    std::optional<int> GetBrightness() {
+      namespace fs = std::filesystem;
+      const fs::path backlight("/sys/class/backlight");
+      if (!fs::exists(backlight))
+        return std::nullopt;
+
+      std::error_code ec;
+      for (const auto &entry : fs::directory_iterator(backlight, ec)) {
+        if (!entry.is_directory(ec))
+          continue;
+        fs::path cur = entry.path() / "brightness";
+        fs::path max = entry.path() / "max_brightness";
+        if (!fs::exists(cur, ec) || !fs::exists(max, ec))
+          continue;
+
+        std::ifstream fc(cur), fm(max);
+        long cv = 0, mv = 0;
+        if ((fc >> cv) && (fm >> mv) && mv > 0)
+          return static_cast<int>((static_cast<double>(cv) / mv) * 100.0);
+      }
+      return std::nullopt;
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    bool GetEdidFromDrm(std::vector<unsigned char> &edid_data) {
+      for (int i = 0; i < 8; ++i) {
+        std::string path = "/dev/dri/card" + std::to_string(i);
+        int fd = open(path.c_str(), O_RDWR | O_CLOEXEC);
+        if (fd < 0)
+          continue;
+
+        drmModeRes *res = drmModeGetResources(fd);
+        if (!res) {
+          close(fd);
+          continue;
+        }
+
+        bool found = false;
+        for (int j = 0; j < res->count_connectors && !found; ++j) {
+          drmModeConnector *conn = drmModeGetConnector(fd, res->connectors[j]);
+          if (!conn)
+            continue;
+
+          if (conn->connection == DRM_MODE_CONNECTED) {
+            for (int k = 0; k < conn->count_props && !found; ++k) {
+              drmModePropertyRes *prop = drmModeGetProperty(fd, conn->props[k]);
+              if (!prop)
+                continue;
+
+              if (strcmp(prop->name, "EDID") == 0) {
+                drmModePropertyBlobRes *blob =
+                    drmModeGetPropertyBlob(fd, conn->prop_values[k]);
+                if (blob && blob->length >= 128) {
+                  edid_data.assign(static_cast<unsigned char *>(blob->data),
+                                   static_cast<unsigned char *>(blob->data) +
+                                       blob->length);
+                  found = true;
+                }
+                if (blob)
+                  drmModeFreePropertyBlob(blob);
+              }
+              drmModeFreeProperty(prop);
+            }
+          }
+          drmModeFreeConnector(conn);
+        }
+        drmModeFreeResources(res);
+        close(fd);
+        if (found)
+          return true;
+      }
+      return false;
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    std::optional<EdidInfo> GetEdidInfo() {
+      std::vector<unsigned char> edid;
+      if (!GetEdidFromDrm(edid) || edid.size() < 128)
+        return std::nullopt;
+
+      // Validate EDID header magic
+      const unsigned char magic[8] = {0x00, 0xFF, 0xFF, 0xFF,
+                                      0xFF, 0xFF, 0xFF, 0x00};
+      if (std::memcmp(edid.data(), magic, 8) != 0)
+        return std::nullopt;
+
+      EdidInfo info;
+
+      // Manufacturer ID — bytes 8-9, ISA PnP packed ASCII
+      char mfr[4] = {
+          static_cast<char>(((edid[8] >> 2) & 0x1F) + 'A' - 1),
+          static_cast<char>(
+              (((edid[8] & 0x03) << 3) | ((edid[9] >> 5) & 0x07)) + 'A' - 1),
+          static_cast<char>((edid[9] & 0x1F) + 'A' - 1), '\0'};
+      info.manufacturer = wxString::FromUTF8(mfr);
+
+      // Physical size — bytes 21-22 in cm → diagonal inches
+      int w_cm = edid[21];
+      int h_cm = edid[22];
+      if (w_cm > 0 && h_cm > 0) {
+        double w_mm = w_cm * 10.0;
+        double h_mm = h_cm * 10.0;
+        double diag = std::sqrt(w_mm * w_mm + h_mm * h_mm) / 25.4;
+        info.screenSizeInches = wxString::Format("%.1f\"", diag);
+      }
+
+      // Detailed timing descriptors — bytes 54-125, 4 × 18 bytes
+      for (int i = 54; i + 17 < 128; i += 18) {
+        uint16_t pixel_clock_raw = static_cast<uint16_t>(edid[i]) |
+                                   (static_cast<uint16_t>(edid[i + 1]) << 8);
+
+        // Non-zero pixel clock → timing descriptor → compute refresh rate
+        if (pixel_clock_raw > 0 && !info.refreshRate.has_value()) {
+          uint32_t pixel_clock = pixel_clock_raw * 10000UL;
+
+          uint32_t h_active =
+              edid[i + 2] | ((static_cast<uint32_t>(edid[i + 4] >> 4)) << 8);
+          uint32_t h_blank =
+              edid[i + 3] | ((static_cast<uint32_t>(edid[i + 4] & 0x0F)) << 8);
+          uint32_t v_active =
+              edid[i + 5] | ((static_cast<uint32_t>(edid[i + 7] >> 4)) << 8);
+          uint32_t v_blank =
+              edid[i + 6] | ((static_cast<uint32_t>(edid[i + 7] & 0x0F)) << 8);
+
+          uint32_t h_total = h_active + h_blank;
+          uint32_t v_total = v_active + v_blank;
+
+          if (h_total > 0 && v_total > 0) {
+            double refresh =
+                static_cast<double>(pixel_clock) /
+                (static_cast<double>(h_total) * static_cast<double>(v_total));
+            info.refreshRate = wxString::Format("%.2f", refresh);
+          }
+        }
+
+        // Monitor name (0xFC) or text (0xFE) descriptor
+        if (edid[i] == 0x00 && edid[i + 1] == 0x00 && edid[i + 2] == 0x00 &&
+            info.model.IsEmpty() &&
+            (edid[i + 3] == 0xFC || edid[i + 3] == 0xFE)) {
+          wxString name;
+          for (int j = i + 5; j < i + 18; ++j) {
+            if (edid[j] == 0x0A)
+              break;
+            if (edid[j] >= 0x20 && edid[j] <= 0x7E)
+              name += static_cast<char>(edid[j]);
+          }
+          name = name.Trim();
+          if (!name.IsEmpty())
+            info.model = name;
+        }
+      }
+
+      return info;
+    }
+
+    // ────────────────────────────────────────────────────────────────
+    void CreateInfoDisplay() {
+      wxSizer *sizer = GetSizer();
+      wxFont boldFont = GetFont();
+      boldFont.MakeBold();
+      boldFont.SetPointSize(m_baseFontSize);
+
+      // Skips the row entirely if value is empty
+      auto AddInfoLine = [&](const wxString &label, const wxString &value) {
+        if (value.IsEmpty())
+          return;
+        wxBoxSizer *row = new wxBoxSizer(wxHORIZONTAL);
+        wxStaticText *key = new wxStaticText(this, wxID_ANY, label + ":");
+        key->SetFont(boldFont);
+        wxStaticText *val = new wxStaticText(this, wxID_ANY, value);
+        row->Add(key, 0, wxALL, 4);
+        row->Add(val, 1, wxALL, 4);
+        sizer->Add(row, 0, wxEXPAND | wxLEFT | wxRIGHT, 5);
+        m_infoLabels.push_back(key);
+        m_infoLabels.push_back(val);
+      };
+
+      if (m_systemInfo.desktopEnv)
+        AddInfoLine("Desktop", *m_systemInfo.desktopEnv);
+
+      AddInfoLine("Displays",
+                  wxString::Format("%u", m_systemInfo.displayCount));
+
+      if (m_systemInfo.resolution)
+        AddInfoLine("Resolution", *m_systemInfo.resolution);
+
+      if (m_systemInfo.screenSizeInches)
+        AddInfoLine("Screen Size", *m_systemInfo.screenSizeInches);
+
+      if (m_systemInfo.refreshRate)
+        AddInfoLine("Refresh Rate", *m_systemInfo.refreshRate + " Hz");
+
+      if (m_systemInfo.colorDepth)
+        AddInfoLine("Color Depth",
+                    wxString::Format("%d bit", *m_systemInfo.colorDepth));
+
+      if (m_systemInfo.brightness)
+        AddInfoLine("Brightness",
+                    wxString::Format("%d%%", *m_systemInfo.brightness));
+
+      if (m_systemInfo.manufacturer)
+        AddInfoLine("Manufacturer", *m_systemInfo.manufacturer);
+
+      if (m_systemInfo.model && !m_systemInfo.model->IsEmpty())
+        AddInfoLine("Model", *m_systemInfo.model);
+
+      UpdateFontSizes();
+    }
+  };
+
+  // Add DISPLAY INFORMATION to the top center of page 3
+  DisplayInfoPanel *displayInfo = new DisplayInfoPanel(displayInfoPane);
+  displaySizer->Add(displayInfo, 1, wxEXPAND | wxALL, 10);
+  displayInfoPane->SetSizer(displaySizer);
+  displayInfoPane->Layout();
 
   // ------------------ DISPLAY END =====================
 
@@ -1942,198 +2746,458 @@ bool MyApp::OnInit() {
   wxStaticBoxSizer *storageSizer = new wxStaticBoxSizer(
       wxVERTICAL, storageDevicesPane, "STORAGE INFORMATION");
 
-  class CustomGauge : public wxPanel {
+  class StorageUsageBar : public wxPanel {
   public:
-    CustomGauge(wxWindow *parent, wxWindowID id = wxID_ANY, int range = 100,
-                wxPoint pos = wxDefaultPosition, wxSize size = wxDefaultSize)
-        : wxPanel(parent, id, pos, size), m_range(range), m_value(0) {
-      Bind(wxEVT_PAINT, &CustomGauge::OnPaint, this);
+    StorageUsageBar(wxWindow *parent, wxWindowID id = wxID_ANY,
+                    double percentage = 0.0,
+                    const wxPoint &pos = wxDefaultPosition,
+                    const wxSize &size = wxSize(-1, 20))
+        : wxPanel(parent, id, pos, size), m_percentage(percentage) {
+      SetMinSize(wxSize(-1, 20));
+      Bind(wxEVT_PAINT, &StorageUsageBar::OnPaint, this);
     }
 
-    void SetValue(int value) {
-      m_value = value;
+    void SetPercentage(double pct) {
+      m_percentage = wxMax(0.0, wxMin(100.0, pct));
       Refresh();
     }
 
   private:
-    void OnPaint(wxPaintEvent &event) {
+    double m_percentage;
+
+    void OnPaint([[maybe_unused]] wxPaintEvent &event) {
       wxPaintDC dc(this);
-      wxSize size = GetSize();
+      wxSize sz = GetClientSize();
+      if (sz.GetWidth() <= 0 || sz.GetHeight() <= 0)
+        return;
 
-      // Draw background (free space) in green
-      dc.SetBrush(wxBrush(wxColor(0, 255, 0)));
-      dc.DrawRectangle(0, 0, size.GetWidth(), size.GetHeight());
+      wxGraphicsContext *gc = wxGraphicsContext::Create(dc);
+      if (!gc)
+        return;
 
-      // Draw foreground (used space) in brown
-      int usedWidth = static_cast<int>(
-          (static_cast<double>(m_value) / m_range) * size.GetWidth());
-      dc.SetBrush(wxBrush(wxColor(165, 42, 42)));
-      dc.DrawRectangle(0, 0, usedWidth, size.GetHeight());
-    }
+      gc->SetAntialiasMode(wxANTIALIAS_DEFAULT);
 
-    int m_range;
-    int m_value;
-  };
+      // Track / Background
+      wxColour trackCol(226, 232, 240); // Slate #E2E8F0
+      gc->SetBrush(wxBrush(trackCol));
+      gc->SetPen(*wxTRANSPARENT_PEN);
+      gc->DrawRoundedRectangle(0, 0, sz.GetWidth(), sz.GetHeight(), 4.0);
 
-  class StorageDevicesPanel : public wxPanel {
-  public:
-    StorageDevicesPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
-        : wxPanel(parent, id) {
-      wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
-
-      wxLogMessage("StorageDevicesPanel constructor called");
-
-      std::vector<StorageInfo> storageInfos = getStorageDevices();
-
-      wxLogMessage(
-          wxString::Format("Found %zu storage devices", storageInfos.size()));
-
-      if (storageInfos.empty()) {
-        wxStaticText *errorText =
-            new wxStaticText(this, wxID_ANY,
-                             "No storage devices found or unable to retrieve "
-                             "storage information.");
-        mainSizer->Add(errorText, 0, wxALL, 5);
-      } else {
-        for (const auto &info : storageInfos) {
-          wxBoxSizer *deviceSizer = new wxBoxSizer(wxVERTICAL);
-
-          wxStaticText *nameText = new wxStaticText(this, wxID_ANY, info.name);
-          deviceSizer->Add(nameText, 0, wxEXPAND | wxBOTTOM, 5);
-
-          CustomGauge *gauge = new CustomGauge(
-              this, wxID_ANY, 100, wxDefaultPosition, wxSize(-1, 20));
-          int usedPercentage =
-              static_cast<int>(std::round(info.usedPercentage));
-          gauge->SetValue(usedPercentage);
-          deviceSizer->Add(gauge, 0, wxEXPAND | wxBOTTOM, 5);
-
-          wxString storageText = wxString::Format(
-              "Total: %.2f GB   Used: %.2f GB   Free: %.2f GB   (%.1f%% used)",
-              info.totalGB, info.usedGB, info.freeGB, info.usedPercentage);
-          wxStaticText *spaceText =
-              new wxStaticText(this, wxID_ANY, storageText);
-          deviceSizer->Add(spaceText, 0, wxEXPAND | wxBOTTOM, 10);
-
-          mainSizer->Add(deviceSizer, 0, wxEXPAND | wxALL, 5);
-
-          wxLogMessage(
-              wxString::Format("Added device: %s, Total: %.2f GB, Used: %.2f "
-                               "GB, Free: %.2f GB, Used%%: %.1f%%",
-                               info.name, info.totalGB, info.usedGB,
-                               info.freeGB, info.usedPercentage));
+      // Filled portion
+      double fillWidth = (m_percentage / 100.0) * sz.GetWidth();
+      if (fillWidth > 2.0) {
+        wxColour fillCol;
+        if (m_percentage >= 90.0) {
+          fillCol = wxColour(239, 68, 68); // Red #EF4444
+        } else if (m_percentage >= 70.0) {
+          fillCol = wxColour(245, 158, 11); // Amber #F59E0B
+        } else {
+          fillCol = wxColour(16, 185, 129); // Emerald #10B981
         }
+        gc->SetBrush(wxBrush(fillCol));
+        gc->DrawRoundedRectangle(0, 0, fillWidth, sz.GetHeight(), 4.0);
       }
 
-      SetSizer(mainSizer);
-      mainSizer->Fit(this);
+      // Percentage label text
+      wxString pctText = wxString::Format("%.1f%%", m_percentage);
+      wxFont font(wxFontInfo(9).Bold().Family(wxFONTFAMILY_SWISS));
+      gc->SetFont(font, (m_percentage > 55.0) ? *wxWHITE : wxColour(30, 41, 59));
+      double tw = 0, th = 0, td = 0, te = 0;
+      gc->GetTextExtent(pctText, &tw, &th, &td, &te);
+      double tx = (sz.GetWidth() - tw) / 2.0;
+      double ty = (sz.GetHeight() - th) / 2.0;
+      gc->DrawText(pctText, tx, ty);
 
-      wxLogMessage(wxString::Format("Panel size: %d x %d", GetSize().GetWidth(),
-                                    GetSize().GetHeight()));
+      delete gc;
+    }
+  };
+
+  class StorageDevicesPanel : public wxScrolledWindow {
+  public:
+    StorageDevicesPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
+        : wxScrolledWindow(parent, id, wxDefaultPosition, wxDefaultSize,
+                           wxVSCROLL) {
+      SetScrollRate(0, 10);
+      m_mainSizer = new wxBoxSizer(wxVERTICAL);
+      SetSizer(m_mainSizer);
+
+      PopulateStorageDevices();
+
+      // Periodic check for drive insertion / removal (every 4s)
+      m_timer.Bind(wxEVT_TIMER, &StorageDevicesPanel::OnTimer, this);
+      m_timer.Start(4000);
     }
 
   private:
-    struct StorageInfo {
+    struct PhysicalStorageDevice {
       wxString name;
-      double totalGB;
-      double usedGB;
-      double freeGB;
-      double usedPercentage;
+      wxString devPath;
+      wxString model;
+      wxString vendor;
+      wxString tran;
+      wxString deviceType;
+      wxString badgeIcon;
+      bool isRotational = false;
+      bool isRemovable = false;
+
+      double totalGB = 0.0;
+      double usedGB = 0.0;
+      double freeGB = 0.0;
+      double usedPercentage = 0.0;
+
+      wxArrayString mountPoints;
+      wxArrayString fsTypes;
     };
 
-    std::vector<StorageInfo> getStorageDevices() {
-      std::vector<StorageInfo> devices;
+    wxBoxSizer *m_mainSizer = nullptr;
+    wxTimer m_timer;
+    std::vector<PhysicalStorageDevice> m_cachedDevices;
 
-      wxLogMessage("Current working directory: " + wxGetCwd());
+    void OnTimer([[maybe_unused]] wxTimerEvent &event) {
+      std::vector<PhysicalStorageDevice> current = GetPhysicalStorageDevices();
+      bool changed = (current.size() != m_cachedDevices.size());
+      if (!changed) {
+        for (size_t i = 0; i < current.size(); ++i) {
+          if (current[i].name != m_cachedDevices[i].name ||
+              std::abs(current[i].usedPercentage -
+                       m_cachedDevices[i].usedPercentage) > 0.5) {
+            changed = true;
+            break;
+          }
+        }
+      }
+      if (changed) {
+        PopulateStorageDevices();
+      }
+    }
 
-      std::ifstream mounts("/proc/mounts");
-      if (!mounts.is_open()) {
-        wxLogMessage("Failed to open /proc/mounts directly. Error: " +
-                     wxString(strerror(errno)));
-        return getFallbackStorageInfo();
+    void PopulateStorageDevices() {
+      Freeze();
+      m_mainSizer->Clear(true);
+      m_cachedDevices = GetPhysicalStorageDevices();
+
+      if (m_cachedDevices.empty()) {
+        wxStaticText *errorText =
+            new wxStaticText(this, wxID_ANY,
+                             "No physical storage devices found or unable to "
+                             "retrieve storage information.");
+        m_mainSizer->Add(errorText, 0, wxALL, 10);
+      } else {
+        for (size_t i = 0; i < m_cachedDevices.size(); ++i) {
+          const auto &info = m_cachedDevices[i];
+
+          // Header: icon + model (safe concatenation, no Format with emoji)
+          wxString headerStr = info.badgeIcon + wxString("  ") + info.model;
+          wxStaticBoxSizer *deviceBox =
+              new wxStaticBoxSizer(wxVERTICAL, this, headerStr);
+
+          // Sub-header info: device node & type (• is multi-byte, avoid Format)
+          wxString typeStr = wxString("Node: ") + info.devPath +
+                             wxString::FromUTF8("  \xE2\x80\xA2  Type: ") +
+                             info.deviceType +
+                             wxString::FromUTF8("  \xE2\x80\xA2  ") +
+                             wxString(info.isRemovable ? "Removable" : "Internal");
+          wxStaticText *typeText = new wxStaticText(this, wxID_ANY, typeStr);
+          wxFont subFont = typeText->GetFont();
+          subFont.SetPointSize(wxMax(8, subFont.GetPointSize() - 1));
+          typeText->SetFont(subFont);
+          typeText->SetForegroundColour(wxColour(100, 116, 139));
+          deviceBox->Add(typeText, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+
+          // Storage usage bar
+          StorageUsageBar *gauge =
+              new StorageUsageBar(this, wxID_ANY, info.usedPercentage);
+          deviceBox->Add(gauge, 0, wxEXPAND | wxALL, 4);
+
+          // Storage metrics line
+          wxString metricsStr = wxString::Format(
+              "Used: %.2f GB (%.1f%%)   |   Free: %.2f GB   |   Total: %.2f GB",
+              info.usedGB, info.usedPercentage, info.freeGB, info.totalGB);
+          wxStaticText *metricsText =
+              new wxStaticText(this, wxID_ANY, metricsStr);
+          metricsText->SetFont(metricsText->GetFont().Bold());
+          deviceBox->Add(metricsText, 0,
+                         wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+
+          // Mount points summary
+          if (!info.mountPoints.IsEmpty()) {
+            wxString mountStr = "Mounts: ";
+            for (size_t mi = 0; mi < info.mountPoints.GetCount(); ++mi) {
+              if (mi > 0) mountStr += ", ";
+              mountStr += info.mountPoints[mi];
+            }
+            if (!info.fsTypes.IsEmpty()) {
+              mountStr += " (";
+              for (size_t fi = 0; fi < info.fsTypes.GetCount(); ++fi) {
+                if (fi > 0) mountStr += ", ";
+                mountStr += info.fsTypes[fi];
+              }
+              mountStr += ")";
+            }
+            wxStaticText *mountText =
+                new wxStaticText(this, wxID_ANY, mountStr);
+            mountText->SetFont(subFont);
+            deviceBox->Add(mountText, 0,
+                           wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+          }
+
+          m_mainSizer->Add(deviceBox, 0, wxEXPAND | wxALL, 5);
+        }
       }
 
-      std::string line;
-      while (std::getline(mounts, line)) {
-        std::istringstream iss(line);
-        std::string device, mountPoint;
-        if (iss >> device >> mountPoint) {
-          if (device.substr(0, 5) == "/dev/" &&
-              mountPoint.substr(0, 4) != "/sys" &&
-              mountPoint.substr(0, 5) != "/proc" &&
-              mountPoint.substr(0, 4) != "/run") {
+      Layout();
+      FitInside();
+      Thaw();
+    }
 
-            struct statvfs stat;
-            if (statvfs(mountPoint.c_str(), &stat) == 0) {
-              double totalBytes =
-                  static_cast<double>(stat.f_frsize) * stat.f_blocks;
-              double freeBytes =
-                  static_cast<double>(stat.f_frsize) * stat.f_bfree;
-              double usedBytes = totalBytes - freeBytes;
+    std::vector<PhysicalStorageDevice> GetPhysicalStorageDevices() {
+      std::vector<PhysicalStorageDevice> devices;
+      wxArrayString output;
+      long exitCode = wxExecute(
+          "lsblk -b -P -o "
+          "NAME,PKNAME,TYPE,MODEL,VENDOR,SIZE,ROTA,RM,MOUNTPOINTS,FSUSED,FSAVAIL,FSSIZE,FSTYPE,TRAN",
+          output, wxEXEC_SYNC | wxEXEC_NODISABLE);
 
-              StorageInfo info;
-              info.name = wxString::Format("%s (%s)", device, mountPoint);
-              info.totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);
-              info.usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0);
-              info.freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
-              info.usedPercentage = (usedBytes / totalBytes) * 100.0;
+      if (exitCode == 0 && !output.IsEmpty()) {
+        struct BlockItem {
+          wxString name;
+          wxString pkName;
+          wxString type;
+          wxString model;
+          wxString vendor;
+          long long size = 0;
+          bool rota = false;
+          bool rm = false;
+          wxArrayString mountpoints;
+          long long fsused = -1;
+          long long fsavail = -1;
+          wxString fstype;
+          wxString tran;
+        };
 
-              devices.push_back(info);
+        std::vector<BlockItem> allItems;
+        for (const auto &line : output) {
+          auto kv = ParseLsblkLine(line);
+          BlockItem item;
+          item.name = kv["NAME"];
+          item.pkName = kv["PKNAME"];
+          item.type = kv["TYPE"];
+          item.model = kv["MODEL"];
+          item.vendor = kv["VENDOR"];
+          kv["SIZE"].ToLongLong(&item.size);
+          item.rota = (kv["ROTA"] == "1");
+          item.rm = (kv["RM"] == "1");
+          item.fstype = kv["FSTYPE"];
+          item.tran = kv["TRAN"].Lower();
 
-              wxLogMessage(wxString::Format("Found device: %s, Total: %.2f GB, "
-                                            "Used: %.2f GB, Free: %.2f GB",
-                                            info.name, info.totalGB,
-                                            info.usedGB, info.freeGB));
-            } else {
-              wxLogMessage(wxString::Format("statvfs failed for %s. Error: %s",
-                                            mountPoint, strerror(errno)));
+          wxString mountsRaw = kv["MOUNTPOINTS"];
+          wxStringTokenizer mTok(mountsRaw, "\n");
+          while (mTok.HasMoreTokens()) {
+            wxString m = mTok.GetNextToken().Trim(true).Trim(false);
+            if (!m.IsEmpty() && m != "[SWAP]") {
+              item.mountpoints.Add(m);
             }
           }
+
+          if (kv.find("FSUSED") != kv.end() && !kv["FSUSED"].IsEmpty()) {
+            kv["FSUSED"].ToLongLong(&item.fsused);
+          }
+          if (kv.find("FSAVAIL") != kv.end() && !kv["FSAVAIL"].IsEmpty()) {
+            kv["FSAVAIL"].ToLongLong(&item.fsavail);
+          }
+
+          allItems.push_back(item);
+        }
+
+        // Process only physical disk items (TYPE == "disk")
+        for (const auto &item : allItems) {
+          if (item.type != "disk")
+            continue;
+
+          // Skip virtual and zram/loop/ram devices
+          if (item.name.StartsWith("zram") || item.name.StartsWith("loop") ||
+              item.name.StartsWith("ram") || item.name.StartsWith("dm-")) {
+            continue;
+          }
+
+          PhysicalStorageDevice dev;
+          dev.name = item.name;
+          dev.devPath = "/dev/" + item.name;
+          { wxString v = item.vendor; dev.vendor = v.Trim(); }
+          dev.tran = item.tran;
+          dev.isRotational = item.rota;
+          dev.isRemovable = item.rm;
+
+          // Determine Model
+          { wxString m = item.model; dev.model = m.Trim(); }
+          if (dev.model.IsEmpty()) {
+            wxString sysModelPath =
+                wxString::Format("/sys/block/%s/device/model", item.name);
+            if (wxFileExists(sysModelPath)) {
+              wxTextFile tf;
+              if (tf.Open(sysModelPath)) {
+                dev.model = tf.GetFirstLine().Trim();
+                tf.Close();
+              }
+            }
+            if (dev.model.IsEmpty()) {
+              wxString sysNamePath =
+                  wxString::Format("/sys/block/%s/device/name", item.name);
+              if (wxFileExists(sysNamePath)) {
+                wxTextFile tf;
+                if (tf.Open(sysNamePath)) {
+                  dev.model = tf.GetFirstLine().Trim();
+                  tf.Close();
+                }
+              }
+            }
+          }
+
+          // Determine device type & badge
+          if (dev.tran == "nvme" || dev.name.StartsWith("nvme")) {
+            dev.deviceType = "NVMe Solid State Drive (SSD)";
+            dev.badgeIcon = wxString::FromUTF8("[NVMe SSD]");
+          } else if (dev.name.StartsWith("mmcblk")) {
+            dev.deviceType = "SD / Memory Card";
+            dev.badgeIcon = wxString::FromUTF8("[SD/MMC]");
+          } else if (dev.isRemovable || dev.tran == "usb") {
+            dev.deviceType = "USB Flash / External Drive";
+            dev.badgeIcon = wxString::FromUTF8("[USB]");
+          } else if (dev.isRotational) {
+            dev.deviceType = "Hard Disk Drive (HDD)";
+            dev.badgeIcon = wxString::FromUTF8("[HDD]");
+          } else {
+            dev.deviceType = "SATA Solid State Drive (SSD)";
+            dev.badgeIcon = wxString::FromUTF8("[SATA SSD]");
+          }
+
+          if (dev.model.IsEmpty()) {
+            dev.model = dev.deviceType;
+          }
+
+          dev.totalGB =
+              static_cast<double>(item.size) / (1024.0 * 1024.0 * 1024.0);
+
+          // Find all child partitions under this disk
+          long long totalUsedBytes = 0;
+          std::set<wxString> countedPartitions;
+          std::set<wxString> uniqueMounts;
+          std::set<wxString> uniqueFs;
+
+          std::function<void(const wxString &)> collectChildren =
+              [&](const wxString &parentName) {
+                for (const auto &child : allItems) {
+                  if (child.pkName == parentName) {
+                    if (!child.fstype.IsEmpty() &&
+                        child.fstype != "crypto_LUKS") {
+                      uniqueFs.insert(child.fstype);
+                    }
+                    for (const auto &m : child.mountpoints) {
+                      uniqueMounts.insert(m);
+                    }
+
+                    if (countedPartitions.find(child.name) ==
+                        countedPartitions.end()) {
+                      countedPartitions.insert(child.name);
+                      if (child.fsused > 0) {
+                        totalUsedBytes += child.fsused;
+                      } else if (!child.mountpoints.IsEmpty()) {
+                        struct statvfs st;
+                        if (statvfs(child.mountpoints[0].mb_str(), &st) == 0) {
+                          long long used =
+                              (static_cast<long long>(st.f_blocks) -
+                               static_cast<long long>(st.f_bfree)) *
+                              st.f_frsize;
+                          if (used > 0)
+                            totalUsedBytes += used;
+                        }
+                      }
+                    }
+
+                    collectChildren(child.name);
+                  }
+                }
+              };
+
+          collectChildren(item.name);
+
+          dev.usedGB = static_cast<double>(totalUsedBytes) /
+                       (1024.0 * 1024.0 * 1024.0);
+          dev.freeGB = (dev.totalGB > dev.usedGB)
+                           ? (dev.totalGB - dev.usedGB)
+                           : 0.0;
+          dev.usedPercentage = (dev.totalGB > 0.0)
+                                   ? ((dev.usedGB / dev.totalGB) * 100.0)
+                                   : 0.0;
+
+          for (const auto &m : uniqueMounts)
+            dev.mountPoints.Add(m);
+          for (const auto &f : uniqueFs)
+            dev.fsTypes.Add(f);
+
+          devices.push_back(dev);
         }
       }
 
       if (devices.empty()) {
-        wxLogMessage(
-            "No devices found in /proc/mounts, using fallback method.");
-        return getFallbackStorageInfo();
+        devices = GetFallbackStorageDevices();
       }
 
       return devices;
     }
 
-    std::vector<StorageInfo> getFallbackStorageInfo() {
-      std::vector<StorageInfo> devices;
-
-      std::vector<std::string> commonMountPoints = {"/", "/home"};
-
-      for (const auto &mountPoint : commonMountPoints) {
-        struct statvfs stat;
-        if (statvfs(mountPoint.c_str(), &stat) == 0) {
-          double totalBytes =
-              static_cast<double>(stat.f_frsize) * stat.f_blocks;
-          double freeBytes = static_cast<double>(stat.f_frsize) * stat.f_bfree;
-          double usedBytes = totalBytes - freeBytes;
-
-          StorageInfo info;
-          info.name = wxString::Format("Fallback (%s)", mountPoint);
-          info.totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);
-          info.usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0);
-          info.freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
-          info.usedPercentage = (usedBytes / totalBytes) * 100.0;
-
-          devices.push_back(info);
-
-          wxLogMessage(wxString::Format("Fallback: Found device: %s, Total: "
-                                        "%.2f GB, Used: %.2f GB, Free: %.2f GB",
-                                        info.name, info.totalGB, info.usedGB,
-                                        info.freeGB));
+    std::map<wxString, wxString> ParseLsblkLine(const wxString &line) {
+      std::map<wxString, wxString> map;
+      size_t pos = 0;
+      while (pos < line.length()) {
+        size_t eqPos = line.find('=', pos);
+        if (eqPos == wxString::npos)
+          break;
+        wxString key = line.substr(pos, eqPos - pos).Trim(true).Trim(false);
+        if (eqPos + 1 < line.length() && line[eqPos + 1] == '"') {
+          size_t endQuote = line.find('"', eqPos + 2);
+          if (endQuote == wxString::npos)
+            break;
+          wxString val = line.substr(eqPos + 2, endQuote - (eqPos + 2));
+          val.Replace("\\x0a", "\n");
+          map[key] = val;
+          pos = endQuote + 1;
         } else {
-          wxLogMessage(
-              wxString::Format("Fallback: statvfs failed for %s. Error: %s",
-                               mountPoint, strerror(errno)));
+          size_t spacePos = line.find(' ', eqPos + 1);
+          if (spacePos == wxString::npos)
+            spacePos = line.length();
+          wxString val = line.substr(eqPos + 1, spacePos - (eqPos + 1));
+          map[key] = val;
+          pos = spacePos + 1;
         }
+        while (pos < line.length() && (line[pos] == ' ' || line[pos] == '\t'))
+          pos++;
       }
+      return map;
+    }
 
+    std::vector<PhysicalStorageDevice> GetFallbackStorageDevices() {
+      std::vector<PhysicalStorageDevice> devices;
+      struct statvfs stat;
+      if (statvfs("/", &stat) == 0) {
+        double totalBytes = static_cast<double>(stat.f_frsize) * stat.f_blocks;
+        double freeBytes = static_cast<double>(stat.f_frsize) * stat.f_bfree;
+        double usedBytes = totalBytes - freeBytes;
+
+        PhysicalStorageDevice dev;
+        dev.name = "rootfs";
+        dev.devPath = "/dev/root";
+        dev.model = "Main System Drive";
+        dev.deviceType = "Primary Storage Device";
+        dev.badgeIcon = "💾";
+        dev.totalGB = totalBytes / (1024.0 * 1024.0 * 1024.0);
+        dev.usedGB = usedBytes / (1024.0 * 1024.0 * 1024.0);
+        dev.freeGB = freeBytes / (1024.0 * 1024.0 * 1024.0);
+        dev.usedPercentage =
+            (totalBytes > 0) ? (usedBytes / totalBytes) * 100.0 : 0.0;
+        dev.mountPoints.Add("/");
+        devices.push_back(dev);
+      }
       return devices;
     }
   };
@@ -2149,17 +3213,12 @@ bool MyApp::OnInit() {
   wxStaticBoxSizer *audioSizer =
       new wxStaticBoxSizer(wxVERTICAL, audioDevicesPane, "AUDIO INFORMATION");
 
-  class AudioDevicesPanel : public wxPanel {
+  class AudioDevicesPanel : public wxScrolledWindow {
   public:
     AudioDevicesPanel(wxWindow *parent, wxWindowID id = wxID_ANY)
-        : wxPanel(parent, id) {
-      wxBoxSizer *outerSizer = new wxBoxSizer(wxVERTICAL);
-
-      // Create a scrolled window to contain the existing content
-      wxScrolledWindow *scrolledWindow = new wxScrolledWindow(
-          this, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
-      scrolledWindow->SetScrollRate(0, 5);
-
+        : wxScrolledWindow(parent, id, wxDefaultPosition, wxDefaultSize,
+                           wxVSCROLL) {
+      SetScrollRate(0, 10);
       wxBoxSizer *mainSizer = new wxBoxSizer(wxVERTICAL);
 
       wxLogMessage("AudioDevicesPanel constructor called");
@@ -2171,29 +3230,27 @@ bool MyApp::OnInit() {
 
       if (audioDevices.empty()) {
         wxStaticText *errorText = new wxStaticText(
-            scrolledWindow, wxID_ANY,
+            this, wxID_ANY,
             "No audio devices found or unable to retrieve audio information.");
         mainSizer->Add(errorText, 0, wxALL, 5);
       } else {
         for (const auto &device : audioDevices) {
           wxStaticBoxSizer *deviceSizer =
-              new wxStaticBoxSizer(wxVERTICAL, scrolledWindow, device.name);
+              new wxStaticBoxSizer(wxVERTICAL, this, device.name);
 
           wxString typeStr = device.isPlayback ? "Playback" : "Capture";
+          deviceSizer->Add(new wxStaticText(this, wxID_ANY, "Type: " + typeStr),
+                           0, wxALL, 2);
           deviceSizer->Add(
-              new wxStaticText(scrolledWindow, wxID_ANY, "Type: " + typeStr), 0,
-              wxALL, 2);
-          deviceSizer->Add(
-              new wxStaticText(scrolledWindow, wxID_ANY,
+              new wxStaticText(this, wxID_ANY,
                                "Description: " + device.description),
               0, wxALL, 2);
 
           wxString formatStr = wxString::Format(
               "Format: %s, %d channels, %d Hz", device.sampleFormat.c_str(),
               device.channels, device.sampleRate);
-          deviceSizer->Add(
-              new wxStaticText(scrolledWindow, wxID_ANY, formatStr), 0, wxALL,
-              2);
+          deviceSizer->Add(new wxStaticText(this, wxID_ANY, formatStr), 0,
+                           wxALL, 2);
 
           mainSizer->Add(deviceSizer, 0, wxEXPAND | wxALL, 5);
 
@@ -2203,11 +3260,8 @@ bool MyApp::OnInit() {
         }
       }
 
-      scrolledWindow->SetSizer(mainSizer);
-      scrolledWindow->FitInside(); // Ensure the scrolled window content fits
-
-      outerSizer->Add(scrolledWindow, 1, wxEXPAND);
-      SetSizer(outerSizer);
+      SetSizer(mainSizer);
+      FitInside();
 
       wxLogMessage(wxString::Format("Panel size: %d x %d", GetSize().GetWidth(),
                                     GetSize().GetHeight()));
@@ -2523,121 +3577,129 @@ bool MyApp::OnInit() {
     }
 
     std::vector<std::pair<wxString, wxString>> GetCPUInfo() {
-          std::vector<std::pair<wxString, wxString>> info;
-          std::ifstream cpuinfo("/proc/cpuinfo");
-          std::string line;
-          std::string model_name, vendor_id;
-          int physicalCores = 0;
-          m_numCores = 0;  // reset before counting
+      std::vector<std::pair<wxString, wxString>> info;
+      std::ifstream cpuinfo("/proc/cpuinfo");
+      std::string line;
+      std::string model_name, vendor_id;
+      int physicalCores = 0;
+      m_numCores = 0; // reset before counting
 
-          // Single pass — collect everything from /proc/cpuinfo
-          while (std::getline(cpuinfo, line)) {
-            std::istringstream iss(line);
-            std::string key, value;
-            if (std::getline(iss, key, ':') && std::getline(iss, value)) {
-              key   = Trim(key);
-              value = Trim(value);
-              if (key == "processor")
-                m_numCores++;
-              if (key == "model name" && model_name.empty())
-                model_name = value;
-              if (key == "vendor_id" && vendor_id.empty())
-                vendor_id = value;
-              if (key == "cpu cores" && physicalCores == 0)
-                physicalCores = std::stoi(value);
-            }
-          }
-          if (physicalCores == 0) physicalCores = m_numCores;
-
-          // Architecture
-          wxArrayString uname_output;
-          wxString arch_str = "Unknown";
-          if (wxExecute("uname -m", uname_output, wxEXEC_SYNC) == 0 &&
-              !uname_output.IsEmpty()) {
-            if      (uname_output[0] == "x86_64")            arch_str = "64-bit";
-            else if (uname_output[0].Contains("386") ||
-                     uname_output[0].Contains("i686"))        arch_str = "32-bit";
-            else                                              arch_str = uname_output[0];
-          }
-
-          // ── CPU section ───────────────────────────────────────────────────
-          info.emplace_back("CPU Manufacturer",   vendor_id);
-          info.emplace_back("CPU Model",          model_name);
-          info.emplace_back("CPU Architecture",   arch_str);
-          info.emplace_back("CPU Physical Cores", std::to_string(physicalCores));
-          info.emplace_back("CPU Logical Threads",std::to_string(m_numCores));
-
-          // ── GPU section ───────────────────────────────────────────────────
-          wxString gpuVendor = "Unknown", gpuName = "Unknown",
-                   gpuDriver = "Unknown", gpuVRAM = "Unknown";
-
-          // lspci — most reliable for name on any GPU
-          wxArrayString lspci;
-          if (wxExecute("lspci", lspci, wxEXEC_SYNC) == 0) {
-            for (const auto &l : lspci) {
-              if (l.Contains("VGA") || l.Contains("Display") ||
-                  l.Contains("3D")  || l.Contains("GPU")) {
-                gpuName = l.AfterFirst(':').AfterFirst(':').Trim(false);
-                break;
-              }
-            }
-          }
-
-          // sysfs — vendor, driver, VRAM
-          // Try card0 through card2 explicitly (wxDir glob can miss render nodes)
-          for (const wxString &card : { wxString("card0"),
-                                         wxString("card1"),
-                                         wxString("card2") }) {
-            wxString base = "/sys/class/drm/" + card + "/device/";
-            if (!wxDirExists(base)) continue;
-
-            // Vendor
-            if (gpuVendor == "Unknown") {
-              wxTextFile vf;
-              if (vf.Open(base + "vendor")) {
-                wxString vid = vf.GetFirstLine().Trim().Lower();
-                vf.Close();
-                if      (vid == "0x1002") gpuVendor = "AMD";
-                else if (vid == "0x10de") gpuVendor = "NVIDIA";
-                else if (vid == "0x8086") gpuVendor = "Intel";
-                else                      gpuVendor = vid;
-              }
-            }
-
-            // Driver — readlink on the driver symlink
-            if (gpuDriver == "Unknown") {
-              std::string dpath = std::string(base.mb_str()) + "driver";
-              char buf[512] = {};
-              ssize_t len = readlink(dpath.c_str(), buf, sizeof(buf) - 1);
-              if (len > 0)
-                gpuDriver = wxString::FromUTF8(buf).AfterLast('/');
-            }
-
-            // VRAM — amdgpu exposes this node
-            if (gpuVRAM == "Unknown") {
-              wxTextFile vramF;
-              if (vramF.Open(base + "mem_info_vram_total")) {
-                wxString raw = vramF.GetFirstLine().Trim();
-                vramF.Close();
-                unsigned long long bytes = 0;
-                raw.ToULongLong(&bytes);
-                if (bytes > 0)
-                  gpuVRAM = wxString::Format("%.0f MB",
-                                (double)bytes / (1024.0 * 1024.0));
-              }
-            }
-
-            break; // found a valid card, stop
-          }
-
-          info.emplace_back("── GPU ──",      "");   // divider
-          info.emplace_back("GPU Vendor",     gpuVendor);
-          info.emplace_back("GPU Name",       gpuName);
-          info.emplace_back("GPU Driver",     gpuDriver);
-          info.emplace_back("GPU VRAM",       gpuVRAM);
-
-          return info;
+      // Single pass — collect everything from /proc/cpuinfo
+      while (std::getline(cpuinfo, line)) {
+        std::istringstream iss(line);
+        std::string key, value;
+        if (std::getline(iss, key, ':') && std::getline(iss, value)) {
+          key = Trim(key);
+          value = Trim(value);
+          if (key == "processor")
+            m_numCores++;
+          if (key == "model name" && model_name.empty())
+            model_name = value;
+          if (key == "vendor_id" && vendor_id.empty())
+            vendor_id = value;
+          if (key == "cpu cores" && physicalCores == 0)
+            physicalCores = std::stoi(value);
         }
+      }
+      if (physicalCores == 0)
+        physicalCores = m_numCores;
+
+      // Architecture
+      wxArrayString uname_output;
+      wxString arch_str = "Unknown";
+      if (wxExecute("uname -m", uname_output, wxEXEC_SYNC) == 0 &&
+          !uname_output.IsEmpty()) {
+        if (uname_output[0] == "x86_64")
+          arch_str = "64-bit";
+        else if (uname_output[0].Contains("386") ||
+                 uname_output[0].Contains("i686"))
+          arch_str = "32-bit";
+        else
+          arch_str = uname_output[0];
+      }
+
+      // ── CPU section ───────────────────────────────────────────────────
+      info.emplace_back("CPU Manufacturer", vendor_id);
+      info.emplace_back("CPU Model", model_name);
+      info.emplace_back("CPU Architecture", arch_str);
+      info.emplace_back("CPU Physical Cores", std::to_string(physicalCores));
+      info.emplace_back("CPU Logical Threads", std::to_string(m_numCores));
+
+      // ── GPU section ───────────────────────────────────────────────────
+      wxString gpuVendor = "Unknown", gpuName = "Unknown",
+               gpuDriver = "Unknown", gpuVRAM = "Unknown";
+
+      // lspci — most reliable for name on any GPU
+      wxArrayString lspci;
+      if (wxExecute("lspci", lspci, wxEXEC_SYNC) == 0) {
+        for (const auto &l : lspci) {
+          if (l.Contains("VGA") || l.Contains("Display") || l.Contains("3D") ||
+              l.Contains("GPU")) {
+            gpuName = l.AfterFirst(':').AfterFirst(':').Trim(false);
+            break;
+          }
+        }
+      }
+
+      // sysfs — vendor, driver, VRAM
+      // Try card0 through card2 explicitly (wxDir glob can miss render nodes)
+      for (const wxString &card :
+           {wxString("card0"), wxString("card1"), wxString("card2")}) {
+        wxString base = "/sys/class/drm/" + card + "/device/";
+        if (!wxDirExists(base))
+          continue;
+
+        // Vendor
+        if (gpuVendor == "Unknown") {
+          wxTextFile vf;
+          if (vf.Open(base + "vendor")) {
+            wxString vid = vf.GetFirstLine().Trim().Lower();
+            vf.Close();
+            if (vid == "0x1002")
+              gpuVendor = "AMD";
+            else if (vid == "0x10de")
+              gpuVendor = "NVIDIA";
+            else if (vid == "0x8086")
+              gpuVendor = "Intel";
+            else
+              gpuVendor = vid;
+          }
+        }
+
+        // Driver — readlink on the driver symlink
+        if (gpuDriver == "Unknown") {
+          std::string dpath = std::string(base.mb_str()) + "driver";
+          char buf[512] = {};
+          ssize_t len = readlink(dpath.c_str(), buf, sizeof(buf) - 1);
+          if (len > 0)
+            gpuDriver = wxString::FromUTF8(buf).AfterLast('/');
+        }
+
+        // VRAM — amdgpu exposes this node
+        if (gpuVRAM == "Unknown") {
+          wxTextFile vramF;
+          if (vramF.Open(base + "mem_info_vram_total")) {
+            wxString raw = vramF.GetFirstLine().Trim();
+            vramF.Close();
+            unsigned long long bytes = 0;
+            raw.ToULongLong(&bytes);
+            if (bytes > 0)
+              gpuVRAM = wxString::Format("%.0f MB",
+                                         (double)bytes / (1024.0 * 1024.0));
+          }
+        }
+
+        break; // found a valid card, stop
+      }
+
+      info.emplace_back("── GPU ──", ""); // divider
+      info.emplace_back("GPU Vendor", gpuVendor);
+      info.emplace_back("GPU Name", gpuName);
+      info.emplace_back("GPU Driver", gpuDriver);
+      info.emplace_back("GPU VRAM", gpuVRAM);
+
+      return info;
+    }
 
     void CreateCoreGauges() {
       wxBoxSizer *coresSizer = new wxBoxSizer(wxVERTICAL);
@@ -2726,11 +3788,12 @@ bool MyApp::OnInit() {
   cpuInfoPane->Layout();
 
   // Add the row sizers to the main sizer
-  miscPageSizer->Add(miscTopRowSizer, 1, wxEXPAND);
-  miscPageSizer->Add(miscBottomRowSizer, 1, wxEXPAND);
+  miscPageSizer->Add(miscTopRowSizer, 1, wxEXPAND | wxALL, 2);
+  miscPageSizer->Add(miscBottomRowSizer, 1, wxEXPAND | wxALL, 2);
 
   // Set the sizer for the miscInfoPage
   miscInfoPage->SetSizer(miscPageSizer);
+  miscInfoPage->FitInside();
 
   /************ END: END OF PAGE 3 ***************************/
 

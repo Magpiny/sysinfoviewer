@@ -34,7 +34,21 @@ SysInfoViewer provides a clean graphical interface for monitoring your Linux sys
 
 ---
 
-## What's New in v0.3.0
+## What's New in v0.3.1
+
+### Searchable processes list
+    - The processes list now show a search bar at the top
+    - Each process is attached to its own icon and a place holder first letter of the process is 
+    attached for processes that do not have icons
+    - Ram usage for each process is shown in MBs and percentage as opposed to % alone like in the 
+    previous one
+    - Processes are sorted by RAM usage in descending order.
+
+### Correct display of disk usage information
+    - In Miscellaneous panel; the disk, disk vendor name and mount points are shown in addition to
+    visual disk usage in a bar chart.
+    - Disk usage now shows the used up disk space for the entire disk as opposed to the previous
+    one where disk usage would be shown per partition.
 
 ### CPU Information — Cores vs. Threads Corrected
 
