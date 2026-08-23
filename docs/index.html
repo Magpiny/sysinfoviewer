@@ -1,0 +1,825 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SysInfoViewer — Modern Linux System Telemetry & Hardware Monitor</title>
+  <meta name="description" content="Lightweight, native Linux system information and resource monitor built with modern C++23 and wxWidgets. Real-time CPU, memory, responsive disk metrics, and UPower-grade battery diagnostics.">
+  <meta name="keywords" content="linux, system monitor, telemetry, c++, wxwidgets, sysinfo, cpu monitor, appimage, aur, arch linux, fedora, debian">
+  <meta name="author" content="Wanjare Samuel">
+
+  <!-- OpenGraph / Social Meta Tags -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="SysInfoViewer — Lightweight Linux System Information Viewer">
+  <meta property="og:description" content="A native, high-performance Linux resource monitor built with C++23 and wxWidgets.">
+  <meta property="og:image" content="screenshots/main_window.png">
+  <meta property="og:url" content="https://magpiny.github.io/sysinfoviewer/">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="shortcut icon" href="favicon.ico">
+
+  <!-- Google Fonts (Outfit, Inter, JetBrains Mono) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+  <!-- Ambient Glowing Background -->
+  <div class="ambient-glow">
+    <div class="ambient-circle c1"></div>
+    <div class="ambient-circle c2"></div>
+    <div class="ambient-circle c3"></div>
+  </div>
+
+  <!-- Header Navigation -->
+  <header class="header" id="header">
+    <div class="container">
+      <nav class="nav" aria-label="Main Navigation">
+        <a href="#hero" class="brand-link">
+          <img src="sysinfoviewer.png" alt="SysInfoViewer Logo" class="brand-logo">
+          <span>SysInfo<span class="gradient-text">Viewer</span></span>
+          <span class="version-tag">v0.3.3</span>
+        </a>
+
+        <ul class="nav-menu">
+          <li><a href="#features" class="nav-link">Features</a></li>
+          <li><a href="#simulator" class="nav-link">Live Telemetry</a></li>
+          <li><a href="#showcase" class="nav-link">Showcase</a></li>
+          <li><a href="#install" class="nav-link">Installation</a></li>
+          <li><a href="#docs" class="nav-link">Documentation</a></li>
+        </ul>
+
+        <div class="nav-actions">
+          <button class="btn-icon" id="theme-toggle" aria-label="Toggle Theme" title="Toggle Light/Dark Mode">
+            <span id="theme-icon">
+              <!-- Dark icon rendered by JS -->
+            </span>
+          </button>
+
+          <a href="https://github.com/Magpiny/sysinfoviewer" target="_blank" rel="noopener noreferrer" class="btn btn-outline" id="nav-github-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+              <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"/>
+            </svg>
+            GitHub
+          </a>
+
+          <a href="#install" class="btn btn-primary" id="nav-download-btn">Get SysInfoViewer</a>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Hero Section -->
+  <section class="hero" id="hero">
+    <div class="container">
+      <div class="hero-badge-wrapper">
+        <span class="hero-badge">
+          <span class="pulse-dot"></span>
+          SysInfoViewer v0.3.3 is Now Available
+        </span>
+      </div>
+
+      <h1 class="hero-title">
+        Lightweight, Native Linux <br>
+        <span class="gradient-text">System Telemetry & Hardware Monitor</span>
+      </h1>
+
+      <p class="hero-subtitle">
+        Engineered with modern C++23 and wxWidgets. Delivers real-time CPU doughnut metrics, sub-second RAM breakdown, responsive whole-disk topology, UPower-grade battery diagnostics, and filterable processes with app icon matching.
+      </p>
+
+      <div class="hero-cta">
+        <a href="#install" class="btn btn-primary" id="hero-install-cta">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Download & Install v0.3.3
+        </a>
+
+        <a href="#showcase" class="btn btn-secondary" id="hero-showcase-cta">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polygon points="10 8 16 12 10 16 10 8"></polygon>
+          </svg>
+          Explore Showcase
+        </a>
+      </div>
+
+      <!-- Quick Install Bar -->
+      <div class="quick-install-box">
+        <span style="font-size: 0.8rem; font-weight: 700; color: var(--text-muted);">ARCH / AUR</span>
+        <code class="install-command" id="hero-quick-cmd">paru -S sysinfoviewer</code>
+        <button class="copy-btn" data-copy-target="hero-quick-cmd" title="Copy command">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          Copy
+        </button>
+      </div>
+
+      <!-- Interactive Mockup Window -->
+      <div class="mockup-wrapper" style="margin-top: 3.5rem;">
+        <div class="floating-badge fb-left">
+          <span style="color: var(--accent-purple); font-size: 1.2rem;">⚡</span>
+          <span>Native C++23 • 0% Web Bloat</span>
+        </div>
+
+        <div class="floating-badge fb-right">
+          <span style="color: var(--accent-emerald); font-size: 1.2rem;">🔋</span>
+          <span>UPower-Grade Telemetry</span>
+        </div>
+
+        <div class="mockup-window">
+          <div class="mockup-header">
+            <div class="window-dots">
+              <span class="dot red"></span>
+              <span class="dot yellow"></span>
+              <span class="dot green"></span>
+            </div>
+            <span class="window-title">System Monitor — SysInfoViewer v0.3.3</span>
+            <div class="mockup-tabs">
+              <button class="mockup-tab-btn active" data-img="screenshots/main_window.png">Overview</button>
+              <button class="mockup-tab-btn" data-img="screenshots/sys_processes.png">Processes</button>
+              <button class="mockup-tab-btn" data-img="screenshots/cpu_info.png">CPU Info</button>
+              <button class="mockup-tab-btn" data-img="screenshots/installed_apps.png">Installed Apps</button>
+            </div>
+          </div>
+
+          <div class="mockup-viewport" data-lightbox>
+            <img src="screenshots/main_window.png" alt="SysInfoViewer Main Window Overview" class="mockup-image" id="hero-mockup-img">
+            <div class="zoom-hint">Click to Zoom 🔍</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section class="section" id="features">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Core Architecture</span>
+        <h2 class="section-title">Built for Deep System Insight</h2>
+        <p class="section-description">
+          Engineered from the ground up to query Linux kernel interfaces (`/proc`, `/sys`, `sysfs`, `libdrm`) directly with sub-millisecond overhead.
+        </p>
+      </div>
+
+      <div class="features-grid">
+        <!-- Feature 1 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+              <rect x="9" y="9" width="6" height="6"></rect>
+              <line x1="9" y1="1" x2="9" y2="4"></line>
+              <line x1="15" y1="1" x2="15" y2="4"></line>
+              <line x1="9" y1="20" x2="9" y2="23"></line>
+              <line x1="15" y1="20" x2="15" y2="23"></line>
+              <line x1="20" y1="9" x2="23" y2="9"></line>
+              <line x1="20" y1="14" x2="23" y2="14"></line>
+              <line x1="1" y1="9" x2="4" y2="9"></line>
+              <line x1="1" y1="14" x2="4" y2="14"></line>
+            </svg>
+          </div>
+          <h3 class="feature-title">Real-Time CPU Monitoring</h3>
+          <p class="feature-text">
+            Live doughnut gauge rendering physical cores, logical thread distribution, clock frequency in MHz, and instant CPU utilization derived directly from <code>/proc/stat</code>.
+          </p>
+          <div class="feature-meta">
+            <span>Interval: 1000ms</span>
+            <span>Kernel Source: /proc/cpuinfo</span>
+          </div>
+        </div>
+
+        <!-- Feature 2 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper cyan">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+            </svg>
+          </div>
+          <h3 class="feature-title">Memory & Swap Breakdown</h3>
+          <p class="feature-text">
+            Detailed breakdown of allocated system RAM versus available memory. Calculates exact GB buffers, active cached memory, and swap utilization updated continuously.
+          </p>
+          <div class="feature-meta">
+            <span>Precision: 0.01 GB</span>
+            <span>Kernel Source: sysinfo()</span>
+          </div>
+        </div>
+
+        <!-- Feature 3 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper emerald">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+              <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+              <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+            </svg>
+          </div>
+          <h3 class="feature-title">Responsive Whole-Disk Topology</h3>
+          <p class="feature-text">
+            Resolves partition mount points to their physical block devices (NVMe/SATA) across sysfs symlinks. Features an adaptive pie chart with dynamic multi-tier label wrapping.
+          </p>
+          <div class="feature-meta">
+            <span>Block Layer: /sys/block/</span>
+            <span>v0.3.3 Enhanced UI</span>
+          </div>
+        </div>
+
+        <!-- Feature 4 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper rose">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="1" y="6" width="18" height="12" rx="2"></rect>
+              <path d="M23 13v-2"></path>
+            </svg>
+          </div>
+          <h3 class="feature-title">UPower-Grade Battery Subsystem</h3>
+          <p class="feature-text">
+            Comprehensive power diagnostics: energy capacity (Wh), discharge/charge rate (W), voltage (V), health percentage, cycle count, hardware vendor/model metadata, and remaining runtime.
+          </p>
+          <div class="feature-meta">
+            <span>sysfs + UPower</span>
+            <span>Auto Fallback Mode</span>
+          </div>
+        </div>
+
+        <!-- Feature 5 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+          </div>
+          <h3 class="feature-title">Searchable Process Manager</h3>
+          <p class="feature-text">
+            Real-time filterable process list with instant search by name, PID, or user. Displays desktop application icons with clean letter fallbacks, memory in both MB and %, sorted by RAM.
+          </p>
+          <div class="feature-meta">
+            <span>Instant Filter</span>
+            <span>Icon Theme Integration</span>
+          </div>
+        </div>
+
+        <!-- Feature 6 -->
+        <div class="feature-card">
+          <div class="feature-icon-wrapper cyan">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+              <line x1="8" y1="21" x2="16" y2="21"></line>
+              <line x1="12" y1="17" x2="12" y2="21"></line>
+            </svg>
+          </div>
+          <h3 class="feature-title">GPU, Displays & Peripherals</h3>
+          <p class="feature-text">
+            Direct Direct Rendering Manager (`libdrm`) interrogation for connected display resolutions and refresh rates, ALSA audio card detection, and active network interfaces.
+          </p>
+          <div class="feature-meta">
+            <span>libdrm + ALSA</span>
+            <span>Universal DE Support</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Interactive Telemetry Simulator Section -->
+  <section class="section" id="simulator" style="background: rgba(15, 18, 29, 0.5);">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Interactive Simulation</span>
+        <h2 class="section-title">Live Telemetry Simulator</h2>
+        <p class="section-description">
+          Experience the look and feel of SysInfoViewer's dynamic canvas charts. The simulation below mimics Linux kernel state fluctuations updated every 1.5 seconds.
+        </p>
+      </div>
+
+      <div class="simulator-card">
+        <div class="simulator-header">
+          <div>
+            <h3 style="font-size: 1.3rem;">Kernel Polling Daemon Simulator</h3>
+            <p style="font-size: 0.85rem; color: var(--text-muted); font-family: var(--font-mono);">
+              Active Thread: /proc/stat • /sys/block • meminfo
+            </p>
+          </div>
+          <div class="sim-status">
+            <span class="pulse-dot"></span>
+            <span>LIVE 1.5s POLLING CYCLE</span>
+          </div>
+        </div>
+
+        <div class="sim-grid">
+          <!-- CPU Simulator -->
+          <div class="sim-metric-card">
+            <h4 class="sim-metric-title">CPU Utilization</h4>
+            <div class="sim-canvas-container">
+              <canvas id="sim-cpu-canvas" class="sim-canvas"></canvas>
+              <span class="sim-value-label" id="sim-cpu-val">28.5%</span>
+            </div>
+            <p class="sim-metric-sub">8 Cores | 16 Threads | 3200 MHz</p>
+          </div>
+
+          <!-- RAM Simulator -->
+          <div class="sim-metric-card">
+            <h4 class="sim-metric-title">Memory Allocation</h4>
+            <div class="sim-canvas-container">
+              <canvas id="sim-ram-canvas" class="sim-canvas"></canvas>
+              <span class="sim-value-label" id="sim-ram-val">46.2%</span>
+            </div>
+            <p class="sim-metric-sub">Total: 16.0 GB | Used: 7.4 GB</p>
+          </div>
+
+          <!-- Disk Simulator -->
+          <div class="sim-metric-card">
+            <h4 class="sim-metric-title">Disk Storage</h4>
+            <div class="sim-canvas-container">
+              <canvas id="sim-disk-canvas" class="sim-canvas"></canvas>
+              <span class="sim-value-label" id="sim-disk-val">27.8%</span>
+            </div>
+            <p class="sim-metric-sub">NVMe CT1000P3SSD8 (512 GB)</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Showcase Gallery Section -->
+  <section class="section" id="showcase">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Visual Walkthrough</span>
+        <h2 class="section-title">Application Showcase</h2>
+        <p class="section-description">
+          A seamless tabbed explorer providing deep inspection into each subsystem of SysInfoViewer.
+        </p>
+      </div>
+
+      <div class="showcase-tabs">
+        <button class="showcase-tab active" data-showcase="overview">1. System Overview</button>
+        <button class="showcase-tab" data-showcase="processes">2. Process Telemetry</button>
+        <button class="showcase-tab" data-showcase="cpu">3. CPU & Hardware</button>
+        <button class="showcase-tab" data-showcase="apps">4. Installed Applications</button>
+      </div>
+
+      <!-- Showcase Panel 1: Overview -->
+      <div class="showcase-content-grid showcase-panel" id="showcase-overview">
+        <div class="showcase-preview-box" data-lightbox data-lightbox-src="screenshots/main_window.png">
+          <img src="screenshots/main_window.png" alt="SysInfoViewer System Overview Panel" class="showcase-img">
+          <div class="zoom-hint">Click to Zoom 🔍</div>
+        </div>
+        <div class="showcase-info">
+          <h3>System Information Hub</h3>
+          <p>
+            The primary dashboard brings all critical system metrics into a unified view. Sized proportionally with automatic responsiveness across different monitor aspect ratios.
+          </p>
+          <ul class="showcase-highlights">
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Synchronized Top Row</strong>: CPU, Memory, and Disk charts perfectly aligned on a shared radius scale.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>OS & Distro Telemetry</strong>: Displays kernel release, desktop environment, username, and hostname.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>UPower Battery Monitor</strong>: Dynamic visual battery charge gauge with exact Wh capacity and health.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Showcase Panel 2: Processes -->
+      <div class="showcase-content-grid showcase-panel" id="showcase-processes" style="display: none;">
+        <div class="showcase-preview-box" data-lightbox data-lightbox-src="screenshots/sys_processes.png">
+          <img src="screenshots/sys_processes.png" alt="SysInfoViewer Searchable Process Telemetry" class="showcase-img">
+          <div class="zoom-hint">Click to Zoom 🔍</div>
+        </div>
+        <div class="showcase-info">
+          <h3>Interactive Process Telemetry & Search</h3>
+          <p>
+            Live process monitor featuring an instant search bar to filter processes by name, PID, or user. Displays application icons matched from system icon themes with clean letter fallbacks and dual MB/% memory indicators.
+          </p>
+          <ul class="showcase-highlights">
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Instant Search Filter</strong>: Sub-millisecond live filtering across all executing processes without lag.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Desktop Icon Integration</strong>: Automatically binds running processes to their native desktop application icons.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Dual-Metric RAM Display</strong>: Displays exact memory consumption in both MB and total RAM percentage.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Showcase Panel 3: CPU Info -->
+      <div class="showcase-content-grid showcase-panel" id="showcase-cpu" style="display: none;">
+        <div class="showcase-preview-box" data-lightbox data-lightbox-src="screenshots/cpu_info.png">
+          <img src="screenshots/cpu_info.png" alt="SysInfoViewer CPU & Hardware Panel" class="showcase-img">
+          <div class="zoom-hint">Click to Zoom 🔍</div>
+        </div>
+        <div class="showcase-info">
+          <h3>CPU Topology & Hardware</h3>
+          <p>
+            Delves into processor architecture details, displaying physical core allocations, logical threads, cache sizes, vendor specifications, and instruction set extensions.
+          </p>
+          <ul class="showcase-highlights">
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Accurate Core/Thread Separation</strong>: Resolves AMD Ryzen and Intel Core physical core counts vs. SMT threads accurately.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Microarchitecture Details</strong>: Reads family, model, stepping, and instruction set flags (AVX2, AVX512, AES).</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Zero Daemon Overhead</strong>: Direct sysfs evaluation without persistent polling background daemons.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Showcase Panel 4: Installed Apps -->
+      <div class="showcase-content-grid showcase-panel" id="showcase-apps" style="display: none;">
+        <div class="showcase-preview-box" data-lightbox data-lightbox-src="screenshots/installed_apps.png">
+          <img src="screenshots/installed_apps.png" alt="SysInfoViewer Installed Applications Panel" class="showcase-img">
+          <div class="zoom-hint">Click to Zoom 🔍</div>
+        </div>
+        <div class="showcase-info">
+          <h3>Installed Desktop Applications</h3>
+          <p>
+            Scans and parses FreeDesktop <code>.desktop</code> entry files across system directories (<code>/usr/share/applications</code> and local directories) to present an organized desktop app catalog.
+          </p>
+          <ul class="showcase-highlights">
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Icon Theme Matching</strong>: Resolves application icons from current GTK / FreeDesktop icon themes.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Application Metadata</strong>: View executable paths, categories, comments, and application versions.</span>
+            </li>
+            <li class="showcase-highlight-item">
+              <span class="check-icon">✓</span>
+              <span><strong>Fast Asynchronous Indexing</strong>: Multi-threaded directory scanning with persistent caching for instant startup.</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Installation Hub Section -->
+  <section class="section" id="install">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Easy Deployment</span>
+        <h2 class="section-title">Installation Hub</h2>
+        <p class="section-description">
+          Install SysInfoViewer via your preferred distribution package manager or run standalone anywhere.
+        </p>
+      </div>
+
+      <div class="install-hub">
+        <div class="install-nav">
+          <button class="install-tab-btn active" data-install-target="aur">
+            <span>📦</span> Arch / CachyOS (AUR)
+          </button>
+          <button class="install-tab-btn" data-install-target="appimage">
+            <span>🚀</span> Standalone AppImage
+          </button>
+          <button class="install-tab-btn" data-install-target="deb">
+            <span>🐧</span> Debian / Ubuntu (.deb)
+          </button>
+          <button class="install-tab-btn" data-install-target="rpm">
+            <span>🎩</span> Fedora / RHEL (.rpm)
+          </button>
+          <button class="install-tab-btn" data-install-target="source">
+            <span>⚙️</span> Build from Source
+          </button>
+        </div>
+
+        <div class="install-body">
+          <!-- Tab 1: AUR -->
+          <div class="install-panel active" id="install-aur">
+            <h3>Arch Linux / CachyOS / Manjaro (AUR)</h3>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+              SysInfoViewer is maintained on the Arch User Repository as <code>sysinfoviewer</code>. Install using your AUR helper:
+            </p>
+
+            <div class="terminal-box">
+              <div class="terminal-header">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <button class="copy-btn" data-copy-target="cmd-aur">Copy Command</button>
+              </div>
+              <pre class="terminal-content" id="cmd-aur"><span class="comment"># Using paru</span>
+<span class="cmd">paru -S sysinfoviewer</span>
+
+<span class="comment"># Or using yay</span>
+<span class="cmd">yay -S sysinfoviewer</span></pre>
+            </div>
+            <p style="font-size: 0.85rem; color: var(--text-muted);">Handles all dependencies, builds optimized native binaries, and sets up desktop entry automatically.</p>
+          </div>
+
+          <!-- Tab 2: AppImage -->
+          <div class="install-panel" id="install-appimage">
+            <h3>Standalone AppImage (Universal Linux)</h3>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+              Download the standalone executable and run it on any modern Linux distribution without installation:
+            </p>
+
+            <div class="terminal-box">
+              <div class="terminal-header">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <button class="copy-btn" data-copy-target="cmd-appimage">Copy Command</button>
+              </div>
+              <pre class="terminal-content" id="cmd-appimage"><span class="comment"># Download the latest AppImage from GitHub Releases</span>
+<span class="cmd">wget https://github.com/Magpiny/sysinfoviewer/releases/download/v0.3.3/SysInfoViewer-0.3.3-x86_64.AppImage</span>
+
+<span class="comment"># Make it executable and launch</span>
+<span class="cmd">chmod +x SysInfoViewer-0.3.3-x86_64.AppImage</span>
+<span class="cmd">./SysInfoViewer-0.3.3-x86_64.AppImage</span></pre>
+            </div>
+          </div>
+
+          <!-- Tab 3: DEB -->
+          <div class="install-panel" id="install-deb">
+            <h3>Debian, Ubuntu & Linux Mint (.deb)</h3>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+              Download the official <code>.deb</code> package from the releases section and install via <code>apt</code>:
+            </p>
+
+            <div class="terminal-box">
+              <div class="terminal-header">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <button class="copy-btn" data-copy-target="cmd-deb">Copy Command</button>
+              </div>
+              <pre class="terminal-content" id="cmd-deb"><span class="comment"># Download and install via apt</span>
+<span class="cmd">wget https://github.com/Magpiny/sysinfoviewer/releases/download/v0.3.3/sysinfoviewer-0.3.3-Linux.deb</span>
+<span class="cmd">sudo apt install ./sysinfoviewer-0.3.3-Linux.deb</span></pre>
+            </div>
+          </div>
+
+          <!-- Tab 4: RPM -->
+          <div class="install-panel" id="install-rpm">
+            <h3>Fedora, RHEL & openSUSE (.rpm)</h3>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+              Install the official RPM package natively via <code>dnf</code> or <code>rpm</code>:
+            </p>
+
+            <div class="terminal-box">
+              <div class="terminal-header">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <button class="copy-btn" data-copy-target="cmd-rpm">Copy Command</button>
+              </div>
+              <pre class="terminal-content" id="cmd-rpm"><span class="comment"># Download and install via dnf</span>
+<span class="cmd">wget https://github.com/Magpiny/sysinfoviewer/releases/download/v0.3.3/sysinfoviewer-0.3.3-Linux.rpm</span>
+<span class="cmd">sudo dnf install ./sysinfoviewer-0.3.3-Linux.rpm</span></pre>
+            </div>
+          </div>
+
+          <!-- Tab 5: Build from Source -->
+          <div class="install-panel" id="install-source">
+            <h3>Build from Source</h3>
+            <p style="color: var(--text-secondary); margin-top: 0.5rem;">
+              Compile from source with CMake and GCC 14+ / Clang 18+ (requires C++23):
+            </p>
+
+            <div class="terminal-box">
+              <div class="terminal-header">
+                <div class="terminal-dots"><span></span><span></span><span></span></div>
+                <button class="copy-btn" data-copy-target="cmd-source">Copy Command</button>
+              </div>
+              <pre class="terminal-content" id="cmd-source"><span class="comment"># 1. Clone repository</span>
+<span class="cmd">git clone https://github.com/Magpiny/sysinfoviewer.git</span>
+<span class="cmd">cd sysinfoviewer</span>
+
+<span class="comment"># 2. Build with CMake</span>
+<span class="cmd">cmake -B build -DCMAKE_BUILD_TYPE=Release</span>
+<span class="cmd">cmake --build build -j$(nproc)</span>
+
+<span class="comment"># 3. Install system-wide</span>
+<span class="cmd">sudo cmake --install build</span></pre>
+            </div>
+
+            <!-- Dependencies Reference -->
+            <h4 style="margin-top: 2rem; margin-bottom: 0.5rem;">Prerequisite Packages</h4>
+            <div class="deps-table-wrapper">
+              <table class="deps-table">
+                <thead>
+                  <tr>
+                    <th>Dependency</th>
+                    <th>Purpose</th>
+                    <th>Arch / CachyOS</th>
+                    <th>Debian / Ubuntu</th>
+                    <th>Fedora</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>wxWidgets ≥ 3.3</strong></td>
+                    <td>GUI & Graphics Context</td>
+                    <td><code>wxwidgets-gtk3</code></td>
+                    <td><code>libwxgtk3.2-dev</code></td>
+                    <td><code>wxGTK-devel</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>libcurl</strong></td>
+                    <td>Network Interfaces</td>
+                    <td><code>curl</code></td>
+                    <td><code>libcurl4-openssl-dev</code></td>
+                    <td><code>libcurl-devel</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>ALSA</strong></td>
+                    <td>Audio Cards</td>
+                    <td><code>alsa-lib</code></td>
+                    <td><code>libasound2-dev</code></td>
+                    <td><code>alsa-lib-devel</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>libdrm</strong></td>
+                    <td>Display / GPU Info</td>
+                    <td><code>libdrm</code></td>
+                    <td><code>libdrm-dev</code></td>
+                    <td><code>libdrm-devel</code></td>
+                  </tr>
+                  <tr>
+                    <td><strong>UPower</strong> <em>(runtime)</em></td>
+                    <td>Battery Diagnostics</td>
+                    <td><code>upower</code></td>
+                    <td><code>upower</code></td>
+                    <td><code>upower</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Documentation Section -->
+  <section class="section" id="docs">
+    <div class="container">
+      <div class="section-header">
+        <span class="section-tag">Developer & User Manual</span>
+        <h2 class="section-title">Technical Documentation</h2>
+        <p class="section-description">
+          Detailed guide explaining the underlying subsystem interfaces and operational principles.
+        </p>
+      </div>
+
+      <div class="docs-grid">
+        <aside class="docs-sidebar">
+          <ul class="docs-nav-list">
+            <li class="docs-nav-item"><a href="#doc-sysinfo" class="active">1. System Information Page</a></li>
+            <li class="docs-nav-item"><a href="#doc-processes">2. Process Telemetry</a></li>
+            <li class="docs-nav-item"><a href="#doc-battery">3. UPower Battery Engine</a></li>
+            <li class="docs-nav-item"><a href="#doc-storage">4. Storage & Block Devices</a></li>
+            <li class="docs-nav-item"><a href="#doc-display">5. Displays via libdrm</a></li>
+          </ul>
+        </aside>
+
+        <div class="docs-content">
+          <!-- Doc 1 -->
+          <div class="docs-section" id="doc-sysinfo">
+            <h3>1. System Information Page</h3>
+            <p>
+              The System Information page comprises two rows. The top row hosts three synchronized real-time charts: <strong>CPU Usage</strong> (light pink & sky blue doughnut chart), <strong>Memory Allocation</strong> (brown & green doughnut with central GB breakdown), and <strong>Disk Usage</strong> (light pink & lavender proportional pie chart).
+            </p>
+            <p>
+              All three charts are scaled uniformly using <code>radius = std::min(width, height) * 0.4</code> and centered at <code>(width / 2.0, height / 2.0)</code>. On resize events, the Disk Usage text automatically switches across single-row horizontal, wrapped two-row, or stacked vertical configurations to eliminate label clipping.
+            </p>
+            <div class="feature-pill-list">
+              <span class="feature-pill">wxPaintDC Direct Rendering</span>
+              <span class="feature-pill">wxGraphicsContext Antialiasing</span>
+              <span class="feature-pill">Adaptive Font Metrics</span>
+            </div>
+          </div>
+
+          <!-- Doc 2 -->
+          <div class="docs-section" id="doc-processes">
+            <h3>2. Process Telemetry & Interactive Search</h3>
+            <p>
+              The Processes tab scans the kernel's <code>/proc/[pid]/</code> directories asynchronously. It parses <code>/proc/[pid]/stat</code> for CPU tick calculations and <code>/proc/[pid]/status</code> for resident set size (VmRSS) memory usage.
+            </p>
+            <p>
+              Running processes are mapped to their respective desktop icon themes, and an instant search filter enables sub-millisecond filtering by process name, PID, or executing user.
+            </p>
+          </div>
+
+          <!-- Doc 3 -->
+          <div class="docs-section" id="doc-battery">
+            <h3>3. UPower-Grade Battery Engine</h3>
+            <p>
+              The battery monitoring subsystem reads hardware registers via sysfs at <code>/sys/class/power_supply/BAT*</code>, retrieving <code>energy_now</code>, <code>energy_full</code>, <code>power_now</code>, and <code>voltage_now</code> (converted µWh → Wh and µW → W).
+            </p>
+            <p>
+              It integrates with the system <code>upower</code> service to fetch vendor, model, and serial metadata that sysfs does not expose, degrading gracefully to "Unknown" if UPower is not present.
+            </p>
+          </div>
+
+          <!-- Doc 4 -->
+          <div class="docs-section" id="doc-storage">
+            <h3>4. Storage & Physical Block Device Resolution</h3>
+            <p>
+              SysInfoViewer queries <code>/proc/mounts</code> and follows sysfs symlinks under <code>/sys/class/block/</code> to identify the physical parent disk drive (e.g. <code>nvme0n1</code> or <code>sda</code>) backing mounted partition slices (such as <code>/dev/nvme0n1p2</code>).
+            </p>
+            <p>
+              This ensures disk capacity represents the entire physical device capacity in 512-byte sectors while tracking filesystem consumption via <code>statvfs</code>.
+            </p>
+          </div>
+
+          <!-- Doc 5 -->
+          <div class="docs-section" id="doc-display">
+            <h3>5. Display Hardware via Direct Rendering Manager (`libdrm`)</h3>
+            <p>
+              Unlike legacy tools relying solely on X11 extensions, SysInfoViewer inspects DRM connector status directly through the kernel Direct Rendering Manager (`libdrm`). This enables seamless multi-monitor detection, refresh rate querying, and EDID inspection across both Wayland (Sway, GNOME Wayland, Hyprland, KDE Plasma) and X11 sessions.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Lightbox Modal -->
+  <div class="modal-lightbox" id="lightbox-modal" aria-hidden="true">
+    <button class="lightbox-close" id="lightbox-close" aria-label="Close Lightbox">✕</button>
+    <img src="" alt="Zoomed Screenshot" class="lightbox-img" id="lightbox-img">
+  </div>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="#hero" class="brand-link">
+            <img src="sysinfoviewer.png" alt="SysInfoViewer Logo" class="brand-logo">
+            <span>SysInfo<span class="gradient-text">Viewer</span></span>
+          </a>
+          <p>
+            A high-performance, native Linux system information viewer and hardware resource monitor. Free and open source under the MIT License.
+          </p>
+        </div>
+
+        <div class="footer-col">
+          <h4>Navigation</h4>
+          <ul class="footer-links">
+            <li><a href="#hero">Overview</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#simulator">Live Telemetry</a></li>
+            <li><a href="#showcase">Showcase</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Downloads</h4>
+          <ul class="footer-links">
+            <li><a href="#install">Arch Linux (AUR)</a></li>
+            <li><a href="#install">Universal AppImage</a></li>
+            <li><a href="#install">Debian / Ubuntu (.deb)</a></li>
+            <li><a href="#install">Fedora / RHEL (.rpm)</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-col">
+          <h4>Author & Project</h4>
+          <ul class="footer-links">
+            <li><a href="https://github.com/Magpiny/sysinfoviewer" target="_blank" rel="noopener noreferrer">GitHub Repository</a></li>
+            <li><a href="https://github.com/Magpiny/sysinfoviewer/releases" target="_blank" rel="noopener noreferrer">Releases & Changelog</a></li>
+            <li><a href="mailto:samuelwanjare@protonmail.com">samuelwanjare@protonmail.com</a></li>
+            <li><a href="https://github.com/Magpiny" target="_blank" rel="noopener noreferrer">Wanjare Samuel (@Magpiny)</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>© 2024–2026 Wanjare Samuel. Licensed under the <a href="https://github.com/Magpiny/sysinfoviewer/blob/main/LICENSE" target="_blank" rel="noopener noreferrer" style="color: var(--accent-purple); text-decoration: none;">MIT License</a>.</p>
+        <p>Built with modern C++23, wxWidgets & Linux Kernel Telemetry.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
+  <script src="sys.js"></script>
+</body>
+</html>

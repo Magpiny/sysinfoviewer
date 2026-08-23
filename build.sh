@@ -5,7 +5,7 @@ set -e
 
 # --- Configuration ---
 echo "Wanjman build script"
-echo "App version 0.2.3"
+echo "App version 0.3.3"
 
 BUILD_DIR="AppDir"
 INSTALL_DIR="AppDir"

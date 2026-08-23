@@ -149,10 +149,6 @@ bool MyApp::OnInit() {
   SetAppDisplayName("System Monitor");
   wxInitAllImageHandlers();
 
-#ifdef __WXMSW__
-  SetIcon(icon);
-#endif
-
   // create wxTreebook
   wxTreebook *treebook = new wxTreebook(frame, wxID_ANY, wxDefaultPosition,
                                         wxDefaultSize, wxNB_LEFT);
@@ -498,155 +494,352 @@ bool MyApp::OnInit() {
 
   class DiskUsagePieChart : public wxPanel {
   public:
-    DiskUsagePieChart(wxWindow *parent) : wxPanel(parent) {
-      SetBackgroundStyle(wxBG_STYLE_PAINT);
+    explicit DiskUsagePieChart(wxWindow *parent) : wxPanel(parent) {
       Bind(wxEVT_PAINT, &DiskUsagePieChart::OnPaint, this);
+      Bind(wxEVT_SIZE, &DiskUsagePieChart::OnSize, this);
+
+      ResolvePrimaryDisk();
       UpdateDiskUsage();
 
-      // Start a timer to update the chart every 60 seconds
+      // Refresh disk usage every 60 seconds. Vendor/model/capacity are
+      // static for a given disk, so those are only resolved once above.
       m_timer.SetOwner(this);
       m_timer.Start(60000);
       Bind(wxEVT_TIMER, &DiskUsagePieChart::OnTimer, this);
     }
 
   private:
-    void OnPaint(wxPaintEvent &event) {
-      wxAutoBufferedPaintDC dc(this);
-      dc.Clear();
+    // -------------------------------------------------------------------
+    // Disk resolution: find the physical block device backing "/", not
+    // just the filesystem/partition mounted there.
+    // -------------------------------------------------------------------
 
+    // Reads /proc/mounts to find the device path mounted at "/".
+    static std::string FindRootMountSource() {
+      std::ifstream mounts("/proc/mounts");
+      std::string line;
+      while (std::getline(mounts, line)) {
+        std::istringstream iss(line);
+        std::string source, target;
+        iss >> source >> target;
+        if (target == "/") {
+          return source; // e.g. "/dev/nvme0n1p2" or "/dev/sda2"
+        }
+      }
+      return {};
+    }
+
+    // Strips a leading "/dev/" from a device path, e.g. "/dev/sda2" -> "sda2".
+    static std::string StripDevPrefix(const std::string &dev_path) {
+      constexpr std::string_view prefix = "/dev/";
+      if (dev_path.rfind(prefix, 0) == 0) {
+        return dev_path.substr(prefix.size());
+      }
+      return dev_path;
+    }
+
+    // Given a leaf block device name (e.g. "sda2", "nvme0n1p2"), resolves
+    // the parent physical disk name (e.g. "sda", "nvme0n1") by following
+    // the /sys/class/block/<dev> symlink's parent directory name, which
+    // the kernel exposes correctly for partitions across device naming
+    // schemes (sdX, nvmeXnY, mmcblkX, etc.).
+    static std::string ResolveParentDiskName(const std::string &leaf_dev) {
+      const std::string sys_path = "/sys/class/block/" + leaf_dev;
+
+      char resolved[PATH_MAX] = {0};
+      if (realpath(sys_path.c_str(), resolved) == nullptr) {
+        return leaf_dev; // fall back to treating it as the disk itself
+      }
+
+      std::string real_path(resolved);
+      // Partitions resolve to .../devices/.../<disk>/<partition>
+      // Whole disks resolve to .../devices/.../<disk>
+      // Check whether a "partition" file exists in this dir; if so,
+      // the parent directory name is the physical disk.
+      std::string partition_marker = real_path + "/partition";
+      std::ifstream marker(partition_marker);
+      if (marker.good()) {
+        std::size_t last_slash = real_path.find_last_of('/');
+        std::string parent_dir = real_path.substr(0, last_slash);
+        std::size_t parent_slash = parent_dir.find_last_of('/');
+        return parent_dir.substr(parent_slash + 1);
+      }
+
+      // Not a partition -- the leaf device is already the whole disk.
+      return leaf_dev;
+    }
+
+    static std::string TrimWhitespace(const std::string &input) {
+      std::size_t start = input.find_first_not_of(" \t\r\n");
+      if (start == std::string::npos) {
+        return {};
+      }
+      std::size_t end = input.find_last_not_of(" \t\r\n");
+      return input.substr(start, end - start + 1);
+    }
+
+    static std::string ReadSysFile(const std::string &path) {
+      std::ifstream file(path);
+      if (!file.good()) {
+        return {};
+      }
+      std::string content;
+      std::getline(file, content);
+      return TrimWhitespace(content);
+    }
+
+    void ResolvePrimaryDisk() {
+      const std::string mount_source = FindRootMountSource();
+      if (mount_source.empty()) {
+        m_diskName = "unknown";
+        m_vendor = "Unknown";
+        m_model = "Unknown";
+        m_capacityBytes = 0;
+        return;
+      }
+
+      const std::string leaf_dev = StripDevPrefix(mount_source);
+      m_diskName = ResolveParentDiskName(leaf_dev);
+
+      const std::string base = "/sys/block/" + m_diskName;
+
+      m_vendor = ReadSysFile(base + "/device/vendor");
+      m_model = ReadSysFile(base + "/device/model");
+      if (m_vendor.empty()) {
+        m_vendor = "Unknown";
+      }
+      if (m_model.empty()) {
+        m_model = m_diskName; // e.g. NVMe drives often lack a vendor file
+      }
+
+      // /sys/block/<disk>/size is in 512-byte sectors, per the kernel's
+      // block layer convention -- this is the real physical disk
+      // capacity, independent of partitioning or filesystem overhead.
+      const std::string size_str = ReadSysFile(base + "/size");
+      if (!size_str.empty()) {
+        try {
+          m_capacityBytes = std::stoull(size_str) * 512ULL;
+        } catch (...) {
+          m_capacityBytes = 0;
+        }
+      }
+    }
+
+    // -------------------------------------------------------------------
+    // Usage refresh (used/free space) -- still read via statvfs("/"),
+    // which reflects actual filesystem usage; only the *capacity* label
+    // now reflects the whole physical disk rather than the partition.
+    // -------------------------------------------------------------------
+    void UpdateDiskUsage() {
+      struct statvfs stats{};
+      if (statvfs("/", &stats) == 0) {
+        const uint64_t fs_total =
+            static_cast<uint64_t>(stats.f_blocks) * stats.f_frsize;
+        const uint64_t fs_free =
+            static_cast<uint64_t>(stats.f_bfree) * stats.f_frsize;
+        m_usedSpace = fs_total - fs_free;
+      }
+      // Free space is reported relative to the *whole disk* capacity,
+      // not just the root filesystem's partition, since other
+      // partitions on the same physical disk also consume its space.
+      m_freeSpace =
+          (m_capacityBytes > m_usedSpace) ? (m_capacityBytes - m_usedSpace) : 0;
+    }
+
+    void OnTimer(wxTimerEvent & /*event*/) {
+      UpdateDiskUsage();
+      Refresh();
+    }
+
+    void OnSize(wxSizeEvent &event) {
+      Refresh();
+      event.Skip();
+    }
+
+    void OnPaint(wxPaintEvent & /*event*/) {
+      wxPaintDC dc(this);
       wxGraphicsContext *gc = wxGraphicsContext::Create(dc);
-      if (gc) {
+      if (gc != nullptr) {
         DrawPieChart(gc);
         delete gc;
       }
     }
 
-    void OnTimer(wxTimerEvent &event) {
-      UpdateDiskUsage();
-      Refresh();
-    }
-
-    void UpdateDiskUsage() {
-      struct statvfs stats;
-      if (statvfs("/", &stats) == 0) {
-        m_totalSpace = stats.f_blocks * stats.f_frsize;
-        m_freeSpace = stats.f_bfree * stats.f_frsize;
-        m_usedSpace = m_totalSpace - m_freeSpace;
-      }
-    }
-
     void DrawPieChart(wxGraphicsContext *gc) {
-      wxSize size = GetClientSize();
-      double width = size.GetWidth();
-      double height = size.GetHeight();
-      double radius = std::min(width, height) * 0.4;
-      double centerX = width / 2;
-      double centerY = height / 2;
+      const wxSize size = GetClientSize();
+      const double width = size.GetWidth();
+      const double height = size.GetHeight();
 
-      double usedAngle = 2 * M_PI * m_usedSpace / m_totalSpace;
+      if (width <= 0 || height <= 0) {
+        return;
+      }
 
-      // Draw used space (pink)
-      gc->SetBrush(wxBrush(wxColor(255, 182, 193))); // Light Pink
+      // Match CPU and Memory usage chart dimensions:
+      // outerRadius = std::min(width, height) * 0.4
+      const double minDim = std::min(width, height);
+      const double radius = minDim * 0.4;
+      const double centerX = width / 2.0;
+      const double centerY = height / 2.0;
+
+      const uint64_t total = m_capacityBytes > 0 ? m_capacityBytes : 1;
+      const double usedAngle = 2 * M_PI * static_cast<double>(m_usedSpace) /
+                               static_cast<double>(total);
+
+      // Used space (light pink)
+      gc->SetBrush(wxBrush(wxColor(255, 182, 193)));
       gc->SetPen(wxPen(wxColor(255, 255, 255), 2));
-
       wxGraphicsPath usedPath = gc->CreatePath();
       usedPath.AddArc(centerX, centerY, radius, 0, usedAngle, true);
       usedPath.AddLineToPoint(centerX, centerY);
       usedPath.CloseSubpath();
-
       gc->FillPath(usedPath);
       gc->StrokePath(usedPath);
 
-      // Draw free space (purple)
-      gc->SetBrush(wxBrush(wxColor(230, 230, 250))); // Lavender
-
+      // Free space (lavender)
+      gc->SetBrush(wxBrush(wxColor(230, 230, 250)));
       wxGraphicsPath freePath = gc->CreatePath();
       freePath.AddArc(centerX, centerY, radius, usedAngle, 2 * M_PI, true);
       freePath.AddLineToPoint(centerX, centerY);
       freePath.CloseSubpath();
-
       gc->FillPath(freePath);
       gc->StrokePath(freePath);
 
-      // Add labels: percentage at the center
-      wxString percentageText =
-          wxString::Format("%.1f%%", (double)m_usedSpace / m_totalSpace * 100);
-      gc->SetFont(wxFont(20, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
+      // Percentage label at chart center -- responsive font size
+      const wxString percentageText = wxString::Format(
+          "%.1f%%", total > 0 ? (100.0 * static_cast<double>(m_usedSpace) /
+                                 static_cast<double>(total))
+                              : 0.0);
+      const int pctFontSize =
+          std::clamp(static_cast<int>(minDim * 0.075), 11, 24);
+      gc->SetFont(wxFont(pctFontSize, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
                          wxFONTWEIGHT_BOLD),
                   wxColor(80, 80, 80));
-      double textWidth, textHeight;
-      gc->GetTextExtent(percentageText, &textWidth, &textHeight);
-      gc->DrawText(percentageText, centerX - textWidth / 2,
-                   centerY - textHeight / 2);
+      double pctWidth = 0;
+      double pctHeight = 0;
+      gc->GetTextExtent(percentageText, &pctWidth, &pctHeight);
+      gc->DrawText(percentageText, centerX - pctWidth / 2.0,
+                   centerY - pctHeight / 2.0);
 
-      // Horizontal labels below the chart
+      // Disk identity line (vendor + model)
+      wxString diskLine;
+      if (m_vendor.empty() || m_vendor == "Unknown") {
+        diskLine = m_model;
+      } else if (m_model.Find(m_vendor) != wxNOT_FOUND) {
+        diskLine = m_model;
+      } else {
+        diskLine = wxString::Format("%s %s", m_vendor, m_model);
+      }
+
+      const int diskFontSize =
+          std::clamp(static_cast<int>(minDim * 0.04), 8, 13);
+      const wxFont diskFont(diskFontSize, wxFONTFAMILY_DEFAULT,
+                            wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);
+      gc->SetFont(diskFont, wxColor(100, 104, 80));
+      double diskLineWidth = 0;
+      double diskLineHeight = 0;
+      gc->GetTextExtent(diskLine, &diskLineWidth, &diskLineHeight);
+
+      // Usage labels (Total / Used / Free)
       struct LabelEntry {
         wxString text;
         wxColor color;
       };
-      LabelEntry labels[] = {
-          {"Total: " + FormatSize(m_totalSpace), wxColor(80, 80, 80)},
+      const LabelEntry labels[] = {
+          {"Total: " + FormatSize(m_capacityBytes), wxColor(80, 80, 80)},
           {"Used: " + FormatSize(m_usedSpace), wxColor(200, 60, 60)},
           {"Free: " + FormatSize(m_freeSpace), wxColor(80, 130, 80)},
       };
 
-      gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
-                         wxFONTWEIGHT_BOLD),
-                  wxColor(80, 80, 80));
+      const int labelFontSize =
+          std::clamp(static_cast<int>(minDim * 0.038), 8, 12);
+      const wxFont labelFont(labelFontSize, wxFONTFAMILY_DEFAULT,
+                             wxFONTSTYLE_NORMAL, wxFONTWEIGHT_BOLD);
 
-      // Measure all three so we can centre the group
-      double totalLabelWidth = 0, labelH = 0;
-      const double padding = 20; // gap between labels
       double widths[3] = {};
-      for (int i = 0; i < 3; i++) {
-        gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
-                           wxFONTWEIGHT_BOLD),
-                    labels[i].color);
-        double tw, th;
+      double labelH = 0;
+      double totalLabelWidth = 0;
+      const double padding = std::clamp(minDim * 0.03, 6.0, 14.0);
+      for (int i = 0; i < 3; ++i) {
+        gc->SetFont(labelFont, labels[i].color);
+        double tw = 0;
+        double th = 0;
         gc->GetTextExtent(labels[i].text, &tw, &th);
         widths[i] = tw;
         totalLabelWidth += tw;
-        if (th > labelH)
-          labelH = th;
+        labelH = std::max(labelH, th);
       }
-      totalLabelWidth += padding * 2; // two gaps between three labels
+      totalLabelWidth += padding * 2;
 
-      double labelY = centerY + radius + 12;
-      double startX = centerX - totalLabelWidth / 2;
+      // Vertical layout below the chart
+      double diskLineY = centerY + radius + 4;
+      double labelsY = diskLineY + diskLineHeight + 2;
 
-      for (int i = 0; i < 3; i++) {
-        gc->SetFont(wxFont(10, wxFONTFAMILY_DEFAULT, wxFONTSTYLE_NORMAL,
-                           wxFONTWEIGHT_BOLD),
-                    labels[i].color);
-        gc->DrawText(labels[i].text, startX, labelY);
-        startX += widths[i] + padding;
+      if (labelsY + labelH > height - 2) {
+        // Constrained height: pin to bottom
+        labelsY = height - labelH - 2;
+        diskLineY = labelsY - diskLineHeight - 2;
+      }
+
+      // Draw disk identity line
+      gc->SetFont(diskFont, wxColor(60, 60, 60));
+      gc->DrawText(diskLine, centerX - diskLineWidth / 2.0, diskLineY);
+
+      // Draw usage labels responsively based on panel width
+      if (totalLabelWidth <= width - 12) {
+        // Single row: Total | Used | Free side-by-side
+        double startX = centerX - totalLabelWidth / 2.0;
+        for (int i = 0; i < 3; ++i) {
+          gc->SetFont(labelFont, labels[i].color);
+          gc->DrawText(labels[i].text, startX, labelsY);
+          startX += widths[i] + padding;
+        }
+      } else {
+        // Multi-line wrap when narrow:
+        // Line 1: Total
+        // Line 2: Used and Free (or each on separate line if very narrow)
+        double usedFreeWidth = widths[1] + widths[2] + padding;
+        if (usedFreeWidth <= width - 12 && labelsY + labelH * 2 <= height) {
+          gc->SetFont(labelFont, labels[0].color);
+          gc->DrawText(labels[0].text, centerX - widths[0] / 2.0, labelsY);
+          double row2Y = labelsY + labelH + 1;
+          double startX = centerX - usedFreeWidth / 2.0;
+          gc->SetFont(labelFont, labels[1].color);
+          gc->DrawText(labels[1].text, startX, row2Y);
+          gc->SetFont(labelFont, labels[2].color);
+          gc->DrawText(labels[2].text, startX + widths[1] + padding, row2Y);
+        } else {
+          // Fully stacked rows
+          double rowY = labelsY;
+          for (int i = 0; i < 3; ++i) {
+            gc->SetFont(labelFont, labels[i].color);
+            gc->DrawText(labels[i].text, centerX - widths[i] / 2.0, rowY);
+            rowY += labelH + 1;
+          }
+        }
       }
     }
 
-    void DrawLabel(wxGraphicsContext *gc, const wxString &text, double x,
-                   double y) {
-      double textWidth, textHeight;
-      gc->GetTextExtent(text, &textWidth, &textHeight);
-      gc->DrawText(text, x - textWidth / 2, y);
-    }
-
-    wxString FormatSize(uint64_t size) {
-      const char *units[] = {"B", "KB", "MB", "GB", "TB"};
+    static wxString FormatSize(uint64_t size) {
+      static const char *units[] = {"B", "KB", "MB", "GB", "TB"};
       int unitIndex = 0;
-      double formattedSize = size;
+      double formattedSize = static_cast<double>(size);
 
-      while (formattedSize >= 1024 && unitIndex < 4) {
-        formattedSize /= 1024;
-        unitIndex++;
+      while (formattedSize >= 1024.0 && unitIndex < 4) {
+        formattedSize /= 1024.0;
+        ++unitIndex;
       }
 
       return wxString::Format("%.2f %s", formattedSize, units[unitIndex]);
     }
 
     wxTimer m_timer;
-    uint64_t m_totalSpace;
-    uint64_t m_usedSpace;
-    uint64_t m_freeSpace;
+
+    std::string m_diskName;
+    wxString m_vendor;
+    wxString m_model;
+    uint64_t m_capacityBytes = 0;
+    uint64_t m_usedSpace = 0;
+    uint64_t m_freeSpace = 0;
   };
 
   // Add Disk Usage chart panel to sizer
@@ -2801,7 +2994,8 @@ bool MyApp::OnInit() {
       // Percentage label text
       wxString pctText = wxString::Format("%.1f%%", m_percentage);
       wxFont font(wxFontInfo(9).Bold().Family(wxFONTFAMILY_SWISS));
-      gc->SetFont(font, (m_percentage > 55.0) ? *wxWHITE : wxColour(30, 41, 59));
+      gc->SetFont(font,
+                  (m_percentage > 55.0) ? *wxWHITE : wxColour(30, 41, 59));
       double tw = 0, th = 0, td = 0, te = 0;
       gc->GetTextExtent(pctText, &tw, &th, &td, &te);
       double tx = (sz.GetWidth() - tw) / 2.0;
@@ -2892,17 +3086,18 @@ bool MyApp::OnInit() {
               new wxStaticBoxSizer(wxVERTICAL, this, headerStr);
 
           // Sub-header info: device node & type (• is multi-byte, avoid Format)
-          wxString typeStr = wxString("Node: ") + info.devPath +
-                             wxString::FromUTF8("  \xE2\x80\xA2  Type: ") +
-                             info.deviceType +
-                             wxString::FromUTF8("  \xE2\x80\xA2  ") +
-                             wxString(info.isRemovable ? "Removable" : "Internal");
+          wxString typeStr =
+              wxString("Node: ") + info.devPath +
+              wxString::FromUTF8("  \xE2\x80\xA2  Type: ") + info.deviceType +
+              wxString::FromUTF8("  \xE2\x80\xA2  ") +
+              wxString(info.isRemovable ? "Removable" : "Internal");
           wxStaticText *typeText = new wxStaticText(this, wxID_ANY, typeStr);
           wxFont subFont = typeText->GetFont();
           subFont.SetPointSize(wxMax(8, subFont.GetPointSize() - 1));
           typeText->SetFont(subFont);
           typeText->SetForegroundColour(wxColour(100, 116, 139));
-          deviceBox->Add(typeText, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+          deviceBox->Add(typeText, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+                         4);
 
           // Storage usage bar
           StorageUsageBar *gauge =
@@ -2916,20 +3111,22 @@ bool MyApp::OnInit() {
           wxStaticText *metricsText =
               new wxStaticText(this, wxID_ANY, metricsStr);
           metricsText->SetFont(metricsText->GetFont().Bold());
-          deviceBox->Add(metricsText, 0,
-                         wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+          deviceBox->Add(metricsText, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+                         4);
 
           // Mount points summary
           if (!info.mountPoints.IsEmpty()) {
             wxString mountStr = "Mounts: ";
             for (size_t mi = 0; mi < info.mountPoints.GetCount(); ++mi) {
-              if (mi > 0) mountStr += ", ";
+              if (mi > 0)
+                mountStr += ", ";
               mountStr += info.mountPoints[mi];
             }
             if (!info.fsTypes.IsEmpty()) {
               mountStr += " (";
               for (size_t fi = 0; fi < info.fsTypes.GetCount(); ++fi) {
-                if (fi > 0) mountStr += ", ";
+                if (fi > 0)
+                  mountStr += ", ";
                 mountStr += info.fsTypes[fi];
               }
               mountStr += ")";
@@ -2937,8 +3134,8 @@ bool MyApp::OnInit() {
             wxStaticText *mountText =
                 new wxStaticText(this, wxID_ANY, mountStr);
             mountText->SetFont(subFont);
-            deviceBox->Add(mountText, 0,
-                           wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, 4);
+            deviceBox->Add(mountText, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+                           4);
           }
 
           m_mainSizer->Add(deviceBox, 0, wxEXPAND | wxALL, 5);
@@ -2953,10 +3150,10 @@ bool MyApp::OnInit() {
     std::vector<PhysicalStorageDevice> GetPhysicalStorageDevices() {
       std::vector<PhysicalStorageDevice> devices;
       wxArrayString output;
-      long exitCode = wxExecute(
-          "lsblk -b -P -o "
-          "NAME,PKNAME,TYPE,MODEL,VENDOR,SIZE,ROTA,RM,MOUNTPOINTS,FSUSED,FSAVAIL,FSSIZE,FSTYPE,TRAN",
-          output, wxEXEC_SYNC | wxEXEC_NODISABLE);
+      long exitCode = wxExecute("lsblk -b -P -o "
+                                "NAME,PKNAME,TYPE,MODEL,VENDOR,SIZE,ROTA,RM,"
+                                "MOUNTPOINTS,FSUSED,FSAVAIL,FSSIZE,FSTYPE,TRAN",
+                                output, wxEXEC_SYNC | wxEXEC_NODISABLE);
 
       if (exitCode == 0 && !output.IsEmpty()) {
         struct BlockItem {
@@ -3023,13 +3220,19 @@ bool MyApp::OnInit() {
           PhysicalStorageDevice dev;
           dev.name = item.name;
           dev.devPath = "/dev/" + item.name;
-          { wxString v = item.vendor; dev.vendor = v.Trim(); }
+          {
+            wxString v = item.vendor;
+            dev.vendor = v.Trim();
+          }
           dev.tran = item.tran;
           dev.isRotational = item.rota;
           dev.isRemovable = item.rm;
 
           // Determine Model
-          { wxString m = item.model; dev.model = m.Trim(); }
+          {
+            wxString m = item.model;
+            dev.model = m.Trim();
+          }
           if (dev.model.IsEmpty()) {
             wxString sysModelPath =
                 wxString::Format("/sys/block/%s/device/model", item.name);
@@ -3121,14 +3324,12 @@ bool MyApp::OnInit() {
 
           collectChildren(item.name);
 
-          dev.usedGB = static_cast<double>(totalUsedBytes) /
-                       (1024.0 * 1024.0 * 1024.0);
-          dev.freeGB = (dev.totalGB > dev.usedGB)
-                           ? (dev.totalGB - dev.usedGB)
-                           : 0.0;
-          dev.usedPercentage = (dev.totalGB > 0.0)
-                                   ? ((dev.usedGB / dev.totalGB) * 100.0)
-                                   : 0.0;
+          dev.usedGB =
+              static_cast<double>(totalUsedBytes) / (1024.0 * 1024.0 * 1024.0);
+          dev.freeGB =
+              (dev.totalGB > dev.usedGB) ? (dev.totalGB - dev.usedGB) : 0.0;
+          dev.usedPercentage =
+              (dev.totalGB > 0.0) ? ((dev.usedGB / dev.totalGB) * 100.0) : 0.0;
 
           for (const auto &m : uniqueMounts)
             dev.mountPoints.Add(m);

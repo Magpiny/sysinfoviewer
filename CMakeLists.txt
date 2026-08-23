@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 4.2)
-project(sysinfoviewer VERSION 0.3.1 LANGUAGES CXX)
+project(sysinfoviewer VERSION 0.3.3 LANGUAGES CXX)
 
 set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix")
 
@@ -65,9 +65,17 @@ install(FILES favicon.ico
 
 # CPack configuration
 set(CPACK_GENERATOR "TGZ;DEB;RPM")
-set(CPACK_PACKAGE_NAME "SysInfoViewer")
+set(CPACK_PACKAGE_NAME "sysinfoviewer")
 set(CPACK_PACKAGE_VENDOR "Wanjare Samuel")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "System Information Viewer")
+set(CPACK_PACKAGE_CONTACT "samuelwanjare@protonmail.com")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Wanjare Samuel <samuelwanjare@protonmail.com>")
+set(CPACK_DEBIAN_PACKAGE_SECTION "utils")
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_GROUP "Applications/System")
+set(CPACK_RPM_PACKAGE_AUTOREQPROV ON)
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lightweight Linux System Information Viewer")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Magpiny/sysinfoviewer")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY ${CPACK_PACKAGE_NAME})
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")

@@ -1,139 +1,183 @@
 # SysInfoViewer
 
-SysInfoViewer is a C++ application that provides detailed system information for Linux systems. It offers a user-friendly graphical interface to display various system metrics, including CPU usage, memory usage, disk usage, battery information, and process details.
+> A lightweight, native Linux system information and resource monitor built with modern C++ (C++23) and wxWidgets.
 
-![Main Window](screenshots/main_window.png)
-![CPU Info](screenshots/cpu_info.png)
-![Installed Apps](screenshots/installed_apps.png)
+[![CI](https://github.com/Magpiny/sysinfoviewer/actions/workflows/crossdistro.yml/badge.svg)](https://github.com/Magpiny/sysinfoviewer/actions/workflows/crossdistro.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-0.3.3-green.svg)](https://github.com/Magpiny/sysinfoviewer/releases)
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-orange.svg)]()
+[![wxWidgets](https://img.shields.io/badge/wxWidgets-3.3-blueviolet.svg)](https://www.wxwidgets.org/)
+[![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)]()
+[![AUR](https://img.shields.io/aur/version/sysinfoviewer.svg)](https://aur.archlinux.org/packages/sysinfoviewer)
+
+SysInfoViewer provides an intuitive, high-performance graphical interface for inspecting and monitoring your Linux workstation — real-time CPU and memory load, responsive disk metrics, UPower-grade battery diagnostics, running processes with live search, installed desktop applications, display/GPU hardware, sound cards, and network interfaces.
+
+---
+
+## Screenshots
+
+| System Overview | Process Manager |
+| :---: | :---: |
+| [![Main Window](screenshots/main_window.png)](screenshots/main_window.png) | [![System Processes](screenshots/sys_processes.png)](screenshots/sys_processes.png) |
+| **CPU Architecture** | **Installed Applications** |
+| [![CPU Info](screenshots/cpu_info.png)](screenshots/cpu_info.png) | [![Installed Apps](screenshots/installed_apps.png)](screenshots/installed_apps.png) |
+
+---
 
 ## Features
 
-- System Information Overview
-- Real-time CPU Usage Monitoring
-- Memory Usage Statistics
-- Disk Usage Visualization
-- Battery Status and Health
-- Process List with Resource Usage
-- Miscellaneous System Information
+- **System Overview** — OS release, Linux distribution, kernel architecture, desktop environment, user, hostname, and synchronized hardware resource charts at a glance.
+- **Real-Time CPU Monitoring** — Dynamic doughnut chart with accurate physical core count, logical thread count, frequency (MHz), and real-time utilization.
+- **Memory & Swap Breakdown** — Live visual gauges showing total, used, and free system memory updated every second.
+- **Responsive Disk Telemetry** — Proportional pie chart with physical device resolution, adaptive labels, and seamless background blending that resizes dynamically with the panel width.
+- **Advanced Battery Diagnostics** — Deep hardware telemetry combining sysfs and UPower: real-time energy (Wh), discharge/charge rate (W), voltage (V), health percentage, charge cycle count, vendor/model metadata, and remaining runtime estimates.
+- **Interactive Process Manager** — Filterable and sortable process viewer featuring a real-time search bar, desktop icon integration with letter fallbacks, and memory metrics displayed in both MB and percentage.
+- **Storage Devices & Filesystems** — Comprehensive physical disk drive details (vendor, model, serial, capacity) and mounted filesystem partitions with visual capacity bars.
+- **Hardware & Peripherals** — Direct kernel/sysfs inspection of GPU display connectors via `libdrm`, ALSA sound devices, and active network interfaces.
+- **Installed Applications Explorer** — Browse and inspect desktop applications installed across the system.
 
-## Prerequisites
+---
 
-Before building and installing SysInfoViewer, ensure you have the following prerequisites installed on your system:
+## What's New in v0.3.3
 
-- C++ Compiler (GCC 14 or later, supporting C++23)
-- CMake (version 4.2.o or later)
-- wxWidgets library (version 3.2.8 or later)
-- Git (for cloning the repository)
-- #### Libraries (Make sure alsa(for soundcards detection), curl(for network detection) libraries are installed in the system) and libdrm 
-    * Curl
- 
-```bash sudo apt install libcurl4t64 libcurlpp```
-    
-    * * Alsa
-        + Arch based distros e.g Manjaro
-            
-```bash sudo pamac install manjaro-alsa```
-        
-      + Debian based distros
-        ```bash sudo apt install libasound2 libasound2-dev```
-   * libdrm
+### Responsive Disk Usage & UI Polish
+- **Harmonized Chart Sizing**: The Disk Usage pie chart now dynamically matches the radius and center alignment of the CPU and Memory usage charts (`std::min(width, height) * 0.4`), ensuring a balanced top-row layout.
+- **Adaptive Multi-Tier Label Wrapping**: Disk usage labels (Total, Used, Free) and disk model identity text intelligently adapt their layout — single-row horizontal on wide screens, wrapped two-row on medium displays, and stacked vertical on narrow panels — preventing text overlap or clipping.
+- **Seamless Canvas Integration**: Removed separate background panel canvas artifacts, allowing all charts to blend cleanly into the native window theme.
 
+### Interactive Searchable Process Manager
+- **Live Process Search**: Real-time filtering search bar to quickly locate processes by process name, PID, or user.
+- **Application Icon Integration**: Running processes are matched with their respective desktop application icons, with clean letter-avatar fallbacks for system daemons and background tasks.
+- **Enhanced Memory Metrics**: Process RAM consumption is now reported in both human-readable megabytes (MB) and total percentage, sorted by RAM usage descending by default.
 
+### Physical Disk & Storage Architecture Overhaul
+- **Whole-Disk Capacity Resolution**: Resolves root filesystem mount sources to their parent physical block devices (NVMe, SATA, MMC) across sysfs symlinks, reporting accurate total physical disk capacity rather than single-partition constraints.
+- **Dedicated Storage Pane**: Visual bar charts and disk vendor/model metadata for all detected storage drives.
 
+### UPower-Grade Battery & Hardware Subsystems
+- **Precise Core/Thread Separation**: Correctly distinguishes physical CPU cores from hyperthreads via `/proc/cpuinfo`.
+- **UPower-Grade Telemetry**: Native sysfs energy parsing (µWh → Wh, µW → W) supplemented by runtime `upower` integration for complete hardware vendor, model, and serial number reporting.
+- **Modern Display Detection**: Rewritten display and GPU detection layer using `libdrm` for robust multi-monitor and universal desktop environment discovery.
 
-## Cloning the Repository
+---
 
-To clone the SysInfoViewer repository, run the following command:
+## Installation
+
+### Arch Linux / CachyOS / Manjaro (AUR)
+
+SysInfoViewer is available on the Arch User Repository (AUR) as `sysinfoviewer`:
 
 ```bash
-git clone https://github.com/Magpiny/SysInfoViewer.git
-cd SysInfoViewer
+# Using paru
+paru -S sysinfoviewer
+
+# Using yay
+yay -S sysinfoviewer
 ```
 
-## Building the Application
+The AUR package automatically configures dependencies and installs desktop integration files.
 
-1. Create a build directory and navigate to it:
+---
+
+### Build from Source
+
+#### Prerequisites
+
+**Compiler & Build System**
+- GCC 14+ or Clang 18+ (C++23 support required)
+- CMake 4.2 or later
+- Make or Ninja
+- Git
+
+**Required Libraries & Headers**
+
+| Dependency | Purpose | Arch / CachyOS | Debian / Ubuntu | Fedora |
+| :--- | :--- | :--- | :--- | :--- |
+| **wxWidgets ≥ 3.3** | GUI Framework | `wxwidgets-gtk3` | `libwxgtk3.2-dev` | `wxGTK3-devel` |
+| **libcurl** | Network / Telemetry | `curl` | `libcurl4-openssl-dev` | `libcurl-devel` |
+| **ALSA** | Sound Card Detection | `alsa-lib` | `libasound2-dev` | `alsa-lib-devel` |
+| **libdrm** | Display / GPU Info | `libdrm` | `libdrm-dev` | `libdrm-devel` |
+| **UPower** *(runtime)* | Battery Metadata | `upower` | `upower` | `upower` |
+
+> **Note:** UPower is an optional runtime dependency. If absent, SysInfoViewer continues to function smoothly using direct sysfs telemetry while displaying "Unknown" for vendor/serial fields.
+
+#### Clone the Repository
 
 ```bash
-mkdir build
-cd build
+git clone https://github.com/Magpiny/sysinfoviewer.git
+cd sysinfoviewer
 ```
 
-2. Generate the build files using CMake:
+#### Option A: Quick Build Script (Recommended)
+
+SysInfoViewer includes a build script to compile and prepare binaries:
 
 ```bash
-cmake ..
-```
-
-3. Build the application:
-
-```bash
-make
-```
-
-## Installing the Application
-
-After building the application, you can install it on your system by running:
-
-```bash
-sudo make install
-```
-
-This will install the SysInfoViewer executable and necessary resources to your system.
-
-## Running the Application
-
-After installation, you can run SysInfoViewer by executing:
-
-```bash
-SysInfoViewer
-```
-
-If you haven't installed the application, you can run it from the build directory:
-
-```bash
-./SysInfoViewer
-```
-
-Alternatively; Instead of going through all the above steps; You can use the build script
-build.sh to build the app. Here's how;
-```bash
-./build.sh
-```
-The build script can build the app either in release(production) mode or debug(development) mode; be sure to add release or debug flags to build in release or development mode respectively. i.e 
-..............................................................................................
-
-```bash
+# Build optimized release binary
 ./build.sh release
-```
-####################*
 
-```bash
+# Build debug binary with verbose logging
 ./build.sh debug
+
+# Run binary directly from AppDir
+./AppDir/bin/sysinfoviewer
 ```
 
-Alternatively 
-```bash 
-./build.sh --help``` #for further guidance.
+#### Option B: Standard CMake Workflow
 
-
-## Running the built app(built using build.sh script)
 ```bash
-./AppDir/bin/sysinfoviewer```
+# Configure and compile
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
 
-## License
+# Run binary
+./build/sysinfoviewer
+```
 
-This project is licensed under MIT license. Please see the [LICENSE](LICENSE) file for details.
+#### System Installation
+
+```bash
+sudo cmake --install build
+```
+
+Once installed, SysInfoViewer can be launched from your application launcher or by running:
+
+```bash
+sysinfoviewer
+```
+
+---
 
 ## Contributing
 
-Contributions to SysInfoViewer are welcome. Please feel free to submit pull requests or open issues to improve the application.
+Contributions, bug reports, and feature suggestions are welcome!
+
+1. Fork the repository and create a feature branch (`git checkout -b feature/amazing-feature`).
+2. Commit your changes (`git commit -m 'feat: add amazing feature'`).
+3. Push to your branch (`git push origin feature/amazing-feature`).
+4. Open a Pull Request.
+
+Please include relevant system information and logs when filing bug reports.
+
+---
+
+## License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for complete details.
+
+---
 
 ## Author
 
-SysInfoViewer is developed by Wanjare Samuel. For any questions or concerns, please contact: wanjaresamuel@gmail.com
+**Wanjare Samuel**  
+- Email: [samuelwanjare@protonmail.com](mailto:samuelwanjare@protonmail.com)  
+- GitHub: [@Magpiny](https://github.com/Magpiny)
 
-## Acknowledgments
+---
 
-- wxWidgets library for the GUI framework
-- All contributors and users of SysInfoViewer
+## Acknowledgements
+
+- [wxWidgets](https://www.wxwidgets.org/) — Cross-platform GUI framework
+- [UPower](https://upower.freedesktop.org/) — Power management and battery telemetry
+- [FreeDesktop](https://www.freedesktop.org/) — Icon themes and desktop standards
+- All contributors and community members supporting SysInfoViewer

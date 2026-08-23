@@ -3,7 +3,7 @@
 /bin/
 bin
 build
-commitmssg.txt
+commit_mssg.txt
 commitsha.txt
 flatpak/commitsha.txt
 .cache/*

@@ -1,6 +1,6 @@
 pkgbase = sysinfoviewer
 	pkgdesc = A comprehensive system information viewer built with wxWidgets
-	pkgver = 0.3.1
+	pkgver = 0.3.3
 	pkgrel = 1
 	url = https://github.com/Magpiny/sysinfoviewer
 	arch = x86_64

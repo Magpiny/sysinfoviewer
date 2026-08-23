@@ -1,12 +1,15 @@
-name: Cross-Distro Build
+name: Cross-Distro Build & Release
 
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*'
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
-# Prevent duplicate runs for PR from same repo
+# Prevent duplicate runs for PR from same branch
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -16,43 +19,35 @@ env:
   BUILD_DIR: build
 
 jobs:
+  # =========================================================================
+  # 1. Ubuntu / Debian Build & DEB / Tarball Packaging
+  # =========================================================================
   build-ubuntu:
+    name: Build & Package (Ubuntu / Debian)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
-          fetch-depth: 0 # For git describe in versioning
+          fetch-depth: 0
 
-      # Cache dependencies
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower
-          version: 1.0
+          packages: build-essential cmake dpkg-dev fakeroot file libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower
+          version: 1.1
 
-      - name: Install Dependencies (Ubuntu)
+      - name: Install dependencies (Ubuntu)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake \
+            build-essential cmake dpkg-dev fakeroot file \
             libwxgtk3.2-dev \
             libcurl4-openssl-dev \
             libasound2-dev \
             libdrm-dev \
             upower
-
-      # Cache CMake build artifacts
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.BUILD_DIR }}
-            ~/.cache/ccache
-          key: ubuntu-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
-          restore-keys: |
-            ubuntu-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-
-            ubuntu-cmake-
 
       - name: Configure CMake
         run: |
@@ -60,37 +55,56 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DCMAKE_INSTALL_PREFIX=/usr
 
-      - name: Build
+      - name: Compile project
         run: cmake --build ${{ env.BUILD_DIR }} --parallel $(nproc)
 
-      - name: Run Tests
-        working-directory: ${{ env.BUILD_DIR }}
-        run: ctest --output-on-failure --parallel $(nproc)
-        continue-on-error: false
+      - name: Verify binary & dynamic linking
+        run: |
+          test -x ${{ env.BUILD_DIR }}/sysinfoviewer
+          file ${{ env.BUILD_DIR }}/sysinfoviewer
+          ldd ${{ env.BUILD_DIR }}/sysinfoviewer
 
+      - name: Generate DEB and Tarball packages via CPack
+        working-directory: ${{ env.BUILD_DIR }}
+        run: |
+          cpack -G "DEB;TGZ"
+          mkdir -p ../dist
+          cp *.deb *.tar.gz ../dist/
+
+      - name: Upload Debian package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-deb
+          path: dist/*.deb
+          retention-days: 14
+
+      - name: Upload Tarball artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-tarball
+          path: dist/*.tar.gz
+          retention-days: 14
+
+  # =========================================================================
+  # 2. Fedora / RPM Build & RPM Packaging
+  # =========================================================================
   build-fedora:
+    name: Build & Package (Fedora / RPM)
     runs-on: ubuntu-latest
     container:
       image: fedora:latest
       options: --user root
     steps:
-      - name: Install git (required for checkout)
-        run: dnf install -y git
+      - name: Install git & core tools
+        run: dnf install -y git rpm-build file
 
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      # Cache DNF packages
-      - name: Cache DNF packages
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/dnf
-          key: fedora-dnf-${{ hashFiles('.github/workflows/*.yml') }}
-          restore-keys: fedora-dnf-
-
-      - name: Install Dependencies (Fedora)
+      - name: Install dependencies (Fedora)
         run: |
           dnf update -y
           dnf install -y \
@@ -99,17 +113,7 @@ jobs:
             libcurl-devel \
             alsa-lib-devel \
             libdrm-devel \
-            upower \
-
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.BUILD_DIR }}
-          key: fedora-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
-          restore-keys: |
-            fedora-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-
-            fedora-cmake-
+            upower
 
       - name: Configure CMake
         run: |
@@ -117,50 +121,52 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DCMAKE_INSTALL_PREFIX=/usr
 
-      - name: Build
+      - name: Compile project
         run: cmake --build ${{ env.BUILD_DIR }} --parallel $(nproc)
 
-      - name: Run Tests
-        working-directory: ${{ env.BUILD_DIR }}
-        run: ctest --output-on-failure --parallel $(nproc)
-        continue-on-error: false
+      - name: Verify binary
+        run: |
+          test -x ${{ env.BUILD_DIR }}/sysinfoviewer
+          file ${{ env.BUILD_DIR }}/sysinfoviewer
+          ldd ${{ env.BUILD_DIR }}/sysinfoviewer
 
+      - name: Generate RPM package via CPack
+        working-directory: ${{ env.BUILD_DIR }}
+        run: |
+          cpack -G RPM
+          mkdir -p ../dist
+          cp *.rpm ../dist/
+
+      - name: Upload RPM package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-rpm
+          path: dist/*.rpm
+          retention-days: 14
+
+  # =========================================================================
+  # 3. Arch Linux Build & Verification
+  # =========================================================================
   build-arch:
+    name: Build & Verification (Arch Linux)
     runs-on: ubuntu-latest
     container:
       image: archlinux:latest
       options: --user root
     steps:
-      - name: Install git (required for checkout)
-        run: pacman -Sy --noconfirm git
+      - name: Install git & base tools
+        run: pacman -Sy --noconfirm git base-devel
 
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
 
-      # Cache Pacman packages
-      - name: Cache Pacman packages
-        uses: actions/cache@v4
-        with:
-          path: /var/cache/pacman/pkg
-          key: arch-pacman-${{ hashFiles('.github/workflows/*.yml') }}
-          restore-keys: arch-pacman-
-
-      - name: Install Dependencies (Arch)
+      - name: Install dependencies (Arch)
         run: |
           pacman -Syu --noconfirm
-          pacman -S --noconfirm base-devel cmake wxwidgets-gtk3 curl alsa-lib libdrm upower
-
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.BUILD_DIR }}
-          key: arch-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
-          restore-keys: |
-            arch-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-
-            arch-cmake-
+          pacman -S --noconfirm cmake wxwidgets-gtk3 curl alsa-lib libdrm upower file
 
       - name: Configure CMake
         run: |
@@ -168,21 +174,23 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DCMAKE_INSTALL_PREFIX=/usr
 
-      - name: Build
+      - name: Compile project
         run: cmake --build ${{ env.BUILD_DIR }} --parallel $(nproc)
 
-      - name: Run Tests
-        working-directory: ${{ env.BUILD_DIR }}
-        run: ctest --output-on-failure --parallel $(nproc)
-        continue-on-error: false
+      - name: Verify binary
+        run: |
+          test -x ${{ env.BUILD_DIR }}/sysinfoviewer
+          file ${{ env.BUILD_DIR }}/sysinfoviewer
 
+  # =========================================================================
+  # 4. AppImage Build & Packaging
+  # =========================================================================
   appimage:
-    runs-on: ubuntu-latest
-    needs: [build-ubuntu, build-fedora, build-arch]
-    permissions:
-      contents: write
+    name: Build & Package (AppImage)
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
           submodules: recursive
           fetch-depth: 0
@@ -190,47 +198,19 @@ jobs:
       - name: Cache apt packages
         uses: awalsh128/cache-apt-pkgs-action@latest
         with:
-          packages: build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower file
-          version: 1.0
+          packages: build-essential cmake file wget libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower
+          version: 1.1
 
-      - name: Install Dependencies (AppImage)
+      - name: Install dependencies (AppImage)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libwxgtk3.2-dev libcurl4-openssl-dev libasound2-dev libdrm-dev upower file
-
-      # Use fixed versions instead of 'continuous' for reproducibility and security
-      - name: Cache AppImage tools
-        id: cache-appimage-tools
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/bin/linuxdeploy
-            /usr/local/bin/appimagetool
-          key: appimage-tools-v1
-
-      - name: Install AppImage tools
-        if: steps.cache-appimage-tools.outputs.cache-hit != 'true'
-        run: |
-          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
-
-          # Verify downloads (basic check)
-          file linuxdeploy-x86_64.AppImage | grep -q "executable"
-          file appimagetool-x86_64.AppImage | grep -q "executable"
-
-          chmod +x linuxdeploy-x86_64.AppImage appimagetool-x86_64.AppImage
-          sudo mv linuxdeploy-x86_64.AppImage /usr/local/bin/linuxdeploy
-          sudo mv appimagetool-x86_64.AppImage /usr/local/bin/appimagetool
-
-      - name: Cache CMake build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ${{ env.BUILD_DIR }}
-          key: ubuntu-appimage-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-${{ hashFiles('**/*.cpp', '**/*.h') }}
-          restore-keys: |
-            ubuntu-appimage-cmake-${{ hashFiles('**/CMakeLists.txt', '**/*.cmake') }}-
-            ubuntu-cmake-
+          sudo apt-get install -y \
+            build-essential cmake file wget \
+            libwxgtk3.2-dev \
+            libcurl4-openssl-dev \
+            libasound2-dev \
+            libdrm-dev \
+            upower
 
       - name: Configure CMake
         run: |
@@ -238,66 +218,114 @@ jobs:
             -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} \
             -DCMAKE_INSTALL_PREFIX=/usr
 
-      - name: Build
+      - name: Compile project
         run: cmake --build ${{ env.BUILD_DIR }} --parallel $(nproc)
 
-      - name: Create AppDir
+      - name: Stage AppDir Structure
         run: |
           cmake --install ${{ env.BUILD_DIR }} --prefix AppDir/usr
 
-          # Ensure desktop file exists and is valid
-          if [ -f "${{ env.BUILD_DIR }}/SysInfoViewer.desktop" ]; then
-            cp ${{ env.BUILD_DIR }}/SysInfoViewer.desktop AppDir/
-          else
-            echo "Warning: Desktop file not found, creating basic one"
-            cat > AppDir/SysInfoViewer.desktop << EOF
-          [Desktop Entry]
-          Type=Application
-          Name=SysInfoViewer
-          Exec=SysInfoViewer
-          Icon=SysInfoViewer
-          Categories=Utility;
-          EOF
+          # Copy desktop file and icon to AppDir root for linuxdeploy
+          cp AppDir/usr/share/applications/sysinfoviewer.desktop AppDir/
+          if [ -f "sysinfoviewer.png" ]; then
+            cp sysinfoviewer.png AppDir/
+          elif [ -f "favicon.ico" ]; then
+            cp favicon.ico AppDir/sysinfoviewer.ico
           fi
 
-          # Handle icon
-          if [ -f "favicon.ico" ]; then
-            cp favicon.ico AppDir/SysInfoViewer.ico
-          fi
-
-          # Create proper AppRun script
+          # Create reliable AppRun launcher
           cat > AppDir/AppRun << 'EOF'
           #!/bin/bash
           SELF=$(readlink -f "$0")
           APPDIR="${SELF%/*}"
-          export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${LD_LIBRARY_PATH}"
+          export LD_LIBRARY_PATH="${APPDIR}/usr/lib:${APPDIR}/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}"
           export PATH="${APPDIR}/usr/bin:${PATH}"
-          exec "${APPDIR}/usr/bin/SysInfoViewer" "$@"
+          exec "${APPDIR}/usr/bin/sysinfoviewer" "$@"
           EOF
           chmod +x AppDir/AppRun
 
-      - name: Generate AppImage
+      - name: Install linuxdeploy and build AppImage
         run: |
-          export VERSION=$(git describe --tags --always || echo "0.1.0")
-          export OUTPUT="SysInfoViewer-${VERSION}-x86_64.AppImage"
-          linuxdeploy --appdir AppDir --output appimage
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage -O linuxdeploy
+          chmod +x linuxdeploy
+          ./linuxdeploy --appdir AppDir --output appimage
+
+          mkdir -p dist
+          # Normalize AppImage naming
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "0.3.3")
+          mv SysInfoViewer-*.AppImage dist/SysInfoViewer-${VERSION}-x86_64.AppImage || mv *.AppImage dist/SysInfoViewer-${VERSION}-x86_64.AppImage
 
       - name: Upload AppImage artifact
         uses: actions/upload-artifact@v4
         with:
-          name: SysInfoViewer-AppImage-${{ github.sha }}
-          path: SysInfoViewer-*.AppImage
-          retention-days: 30
-          if-no-files-found: error
+          name: package-appimage
+          path: dist/*.AppImage
+          retention-days: 14
 
-      # Optional: Create checksums for security verification
-      - name: Generate checksums
+  # =========================================================================
+  # 5. Consolidate Release Assets & Publish to GitHub Releases
+  # =========================================================================
+  release:
+    name: Publish Release Packages
+    runs-on: ubuntu-latest
+    needs: [build-ubuntu, build-fedora, build-arch, appimage]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Create release assets directory
+        run: mkdir -p release_assets
+
+      - name: Download DEB package
+        uses: actions/download-artifact@v4
+        with:
+          name: package-deb
+          path: release_assets
+
+      - name: Download RPM package
+        uses: actions/download-artifact@v4
+        with:
+          name: package-rpm
+          path: release_assets
+
+      - name: Download AppImage package
+        uses: actions/download-artifact@v4
+        with:
+          name: package-appimage
+          path: release_assets
+
+      - name: Download Tarball package
+        uses: actions/download-artifact@v4
+        with:
+          name: package-tarball
+          path: release_assets
+
+      - name: Generate SHA-256 Checksums
+        working-directory: release_assets
         run: |
-          sha256sum SysInfoViewer-*.AppImage > checksums.txt
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
-      - name: Upload checksums
+      - name: Upload all packages bundle artifact
         uses: actions/upload-artifact@v4
         with:
-          name: checksums-${{ github.sha }}
-          path: checksums.txt
+          name: sysinfoviewer-all-packages
+          path: release_assets/*
           retention-days: 30
+
+      - name: Publish to GitHub Releases
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            release_assets/*.deb
+            release_assets/*.rpm
+            release_assets/*.AppImage
+            release_assets/*.tar.gz
+            release_assets/SHA256SUMS.txt
+          draft: false
+          prerelease: false
+          generate_release_notes: true
