@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 4.2)
+cmake_minimum_required(VERSION 3.31)
 project(sysinfoviewer VERSION 0.3.3 LANGUAGES CXX)
 
 set(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install path prefix")
